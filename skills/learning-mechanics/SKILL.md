@@ -23,6 +23,10 @@ skill turns its named, falsifiable phenomena into **decision rules, checklists, 
 pseudo-code** an agent can apply while writing DL code. Every claim below is from the
 paper. Where the paper says a thing is heuristic/unproven, it is flagged as such.
 
+For the deeper paper-derived rationale (the five pillars, proxy catalog, limit theory,
+situation→lens decision table), read `references/core-method.md` only when a task needs
+the *why* rather than the *what*.
+
 ## Core mental model: training is mechanics
 A DL system is fully specified by four explicit, measurable parts — treat them as the
 "equations of motion," and instrument all of them:
@@ -34,6 +38,26 @@ A DL system is fully specified by four explicit, measurable parts — treat them
 
 Nothing is hidden: every weight, activation, gradient, loss is loggable. So **prefer
 fast cheap experiments over assumptions** — measure the regime before reasoning about it.
+
+## Workflow (do these in order — don't skip step 2)
+1. **Specify the system** — pin down all four ingredients above and the scaling axis
+   under test (width / depth / batch / data / compute).
+2. **Instrument coarse dynamics *before* changing any code.** Always log train/val loss
+   vs. tokens, steps, and compute. For instability/scaling work also log: gradient norm,
+   update norm, parameter norm, update-to-weight ratio, activation RMS, a sharpness proxy,
+   and a gradient-noise proxy. For representation work, snapshot activations at matched
+   checkpoints.
+3. **Pick the simplest predictive lens** (solvable proxy, tractable limit, empirical law,
+   hyperparameter theory, or universality check — see decision rules below).
+4. **State a falsifiable quantitative prediction *before* the main run** (LR-vs-width
+   scaling, batch scaling, stability threshold, loss-curve shape, scaling exponent,
+   representation-similarity trend). Note the regime where it should hold and where it
+   should break.
+5. **Make the smallest code change that tests the prediction** — metrics & config first,
+   proxy/scaling variants second, optimizer/architecture changes last.
+6. **Validate and update** — plot observed vs. predicted; if it fails, decide whether the
+   proxy, the limit, the independent variable, or the instrumentation was wrong. Keep
+   negative results — they mark a boundary of applicability.
 
 ## Decision rules you can apply directly
 
@@ -142,6 +166,11 @@ this as **unproven** — use it to reason, not to assert guarantees.
    representation similarity) over worst-case bounds — these are where the lawful
    regularities live.
 
+## Reproducibility checklist (record for every run you'll compare)
+seed · exact data slice/order · full config dump · git commit or diff · hardware ·
+numerical precision · package versions · which scaling axis varied (everything else fixed).
+Without these, a "failed prediction" is unattributable.
+
 ## Quick routing checklist
 - "Optimal LR changed when I widened the model" → μP + transfer (#1).
 - "Changed batch size, training broke" → linear scaling rule (SGD) or √-scaling (Adam) (#2).
@@ -151,10 +180,18 @@ this as **unproven** — use it to reason, not to assert guarantees.
 - "Want to predict the scaling exponent from theory" → you can't reliably; fit it (#8, honest).
 - "Verifying a classifier converged sensibly" → check neural collapse (#7).
 
+## Output requirements (include these when you apply the skill)
+- **Lens chosen:** solvable proxy / limit / empirical law / hyperparameter theory / universality.
+- **Measurements or logs to add** (from the workflow step 2 list).
+- **The falsifiable prediction** being tested, with expected magnitude/direction.
+- **Smallest experiment or code change** that tests it.
+- **Regime of applicability:** where the recommendation should hold, and where it may break.
+
 ## Honesty notes
 - This is a *position/theory* paper: no single algorithm or benchmark result to reproduce.
-  Equations 1–3 above (deep linear net, NTK linearization, neural feature ansatz) and the
+  Equations above (deep linear net, NTK linearization, neural feature ansatz) and the
   `2/η`, `1/width`, `√(batch)` scalings are quoted from it; nothing here is fabricated.
 - Items flagged heuristic (neural feature ansatz) or unproven (Discretization Hypothesis,
   a-priori scaling exponents) are exactly the ones the paper itself flags. Don't overclaim.
-- Further material: `learningmechanics.pub`.
+- Further material: `learningmechanics.pub`; deeper rationale in `references/core-method.md`.
+</content>
