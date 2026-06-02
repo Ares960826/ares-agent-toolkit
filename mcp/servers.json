@@ -1,0 +1,25 @@
+{
+  "_comment": "Canonical, agent-neutral definition of our DIY MCP servers. The installer translates this into each agent's native config format. Tokens are ALWAYS written blank; fill them per-device. Never commit real tokens.",
+  "servers": {
+    "sciverse": {
+      "command": "npx",
+      "args": ["-y", "sciverse-mcp-server"],
+      "env": { "SCIVERSE_API_TOKEN": "" },
+      "timeout_sec": 20,
+      "token_env": "SCIVERSE_API_TOKEN",
+      "token_url": "https://sciverse.space/tokens",
+      "required": true,
+      "note": "Scientific literature search. Token REQUIRED; blank = unusable (401)."
+    },
+    "mineru-cloud": {
+      "command": "uvx",
+      "args": ["mineru-open-mcp"],
+      "env": { "MINERU_API_TOKEN": "", "OUTPUT_DIR": "~/mineru-downloads" },
+      "timeout_sec": 30,
+      "token_env": "MINERU_API_TOKEN",
+      "token_url": "https://mineru.net",
+      "required": false,
+      "note": "Cloud document parsing. Token OPTIONAL; blank = free Flash mode (<=20p/10MB, md only)."
+    }
+  }
+}

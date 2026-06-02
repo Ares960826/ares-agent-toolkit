@@ -1,0 +1,10 @@
+# Never commit real per-device configs or tokens (backstop; these live in $HOME, not here)
+.claude.json
+.codex/
+.cursor/
+.config/opencode/
+mineru-downloads/
+*.bak.*
+**/*.secret
+**/.DS_Store
+__pycache__/

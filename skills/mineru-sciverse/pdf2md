@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+# pdf2md — convenience wrapper around MinerU for Claude Code / terminal use.
+# Converts a PDF/image/Office doc into LLM-ready Markdown + JSON.
+#
+# Usage:
+#   pdf2md <input.pdf> [output_dir] [extra mineru args...]
+#
+# Examples:
+#   pdf2md paper.pdf                       # -> ./paper/  (markdown, json, images)
+#   pdf2md paper.pdf out/                  # -> ./out/
+#   pdf2md scan.pdf out/ -m ocr            # force OCR for scanned PDFs
+#   pdf2md paper.pdf out/ -s 0 -e 4        # only pages 0..4
+#   pdf2md paper.pdf out/ -b hybrid-auto-engine   # higher-accuracy VLM backend
+#
+# Defaults chosen for Apple Silicon reliability:
+#   - backend: pipeline   (most compatible; override with -b)
+#   - model source: modelscope (faster in CN; set MINERU_MODEL_SOURCE=huggingface to switch)
+set -euo pipefail
+
+if [[ $# -lt 1 || "$1" == "-h" || "$1" == "--help" ]]; then
+  sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'
+  exit 0
+fi
+
+INPUT="$1"; shift
+# Accept an http(s) URL: download it to a temp file first, then parse.
+if [[ "$INPUT" == http://* || "$INPUT" == https://* ]]; then
+  url="$INPUT"
+  tmpd="$(mktemp -d "${TMPDIR:-/tmp}/pdf2md.XXXXXX")"
+  fname="$(basename "${url%%\?*}")"; [[ "$fname" == *.* ]] || fname="download.pdf"
+  echo "pdf2md: downloading $url -> $tmpd/$fname" >&2
+  curl -fsSL -m 120 "$url" -o "$tmpd/$fname" || { echo "pdf2md: download failed: $url" >&2; exit 1; }
+  INPUT="$tmpd/$fname"
+fi
+if [[ ! -e "$INPUT" ]]; then
+  echo "pdf2md: input not found: $INPUT" >&2; exit 1
+fi
+
+# Optional 2nd positional arg = output dir (only if it doesn't start with '-')
+OUTDIR=""
+if [[ $# -ge 1 && "${1:0:1}" != "-" ]]; then OUTDIR="$1"; shift; fi
+if [[ -z "$OUTDIR" ]]; then
+  base="$(basename "$INPUT")"; OUTDIR="./${base%.*}"
+fi
+mkdir -p "$OUTDIR"
+
+export MINERU_MODEL_SOURCE="${MINERU_MODEL_SOURCE:-modelscope}"
+
+# Use -b pipeline by default unless the caller already passed a -b/--backend.
+have_backend=0
+for a in "$@"; do case "$a" in -b|--backend) have_backend=1;; esac; done
+if [[ $have_backend -eq 0 ]]; then set -- -b pipeline "$@"; fi
+
+echo "pdf2md: $INPUT -> $OUTDIR  (MINERU_MODEL_SOURCE=$MINERU_MODEL_SOURCE)" >&2
+exec mineru -p "$INPUT" -o "$OUTDIR" "$@"
