@@ -27,7 +27,14 @@ INPUT="$1"; shift
 if [[ "$INPUT" == http://* || "$INPUT" == https://* ]]; then
   url="$INPUT"
   tmpd="$(mktemp -d "${TMPDIR:-/tmp}/pdf2md.XXXXXX")"
-  fname="$(basename "${url%%\?*}")"; [[ "$fname" == *.* ]] || fname="download.pdf"
+  fname="$(basename "${url%%\?*}")"
+  # MinerU keys off the file extension. Keep the name only if it already ends in a
+  # KNOWN doc extension; otherwise (e.g. arxiv "2604.21691") default to .pdf.
+  ext="$(printf '%s' "$fname" | tr '[:upper:]' '[:lower:]')"
+  case "$ext" in
+    *.pdf|*.png|*.jpg|*.jpeg|*.jp2|*.webp|*.gif|*.bmp|*.doc|*.docx|*.ppt|*.pptx|*.xls|*.xlsx) : ;;
+    *) fname="${fname}.pdf" ;;
+  esac
   echo "pdf2md: downloading $url -> $tmpd/$fname" >&2
   curl -fsSL -m 120 "$url" -o "$tmpd/$fname" || { echo "pdf2md: download failed: $url" >&2; exit 1; }
   INPUT="$tmpd/$fname"

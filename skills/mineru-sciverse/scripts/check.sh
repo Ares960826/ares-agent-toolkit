@@ -18,10 +18,13 @@ if [ -d "${HOME}/.cache/modelscope" ] || [ -d "${HOME}/.cache/huggingface" ]; th
 echo "── MCP servers / tokens ──"
 if [ ! -f "$CLAUDE_JSON" ]; then no "~/.claude.json missing (start the agent once, then run setup.sh)"; exit 0; fi
 python3 - "$CLAUDE_JSON" <<'PY'
-import json, sys
+import json, os, sys
 m = json.load(open(sys.argv[1])).get("mcpServers", {})
 G="\033[1;32m"; R="\033[1;31m"; Y="\033[1;33m"; Z="\033[0m"
 def line(sym,col,msg): print(f"  {col}{sym}{Z} {msg}")
+# SciVerse also resolves a token from ~/.sciverse/credentials.json (sciverse auth login).
+sciverse_creds = os.path.expanduser("~/.sciverse/credentials.json")
+has_creds = os.path.isfile(sciverse_creds)
 for name, label, var, required in [
     ("sciverse","SciVerse (literature search)","SCIVERSE_API_TOKEN",True),
     ("mineru-cloud","MinerU cloud (batch/large parse)","MINERU_API_TOKEN",False),
@@ -31,10 +34,13 @@ for name, label, var, required in [
         line("✗",R,f"{label}: server NOT configured — run setup.sh"); continue
     tok = (s.get("env") or {}).get(var,"")
     if tok:
-        line("✓",G,f"{label}: token set")
+        line("✓",G,f"{label}: token set (MCP config env)")
+    elif name == "sciverse" and has_creds:
+        line("✓",G,f"{label}: token via ~/.sciverse/credentials.json (auth login)")
     elif required:
         line("✗",R,f"{label}: token BLANK → get sv-... at https://sciverse.space/tokens")
     else:
         line("!",Y,f"{label}: token blank → Flash mode only (≤20p/10MB). Token: https://mineru.net")
 PY
-echo "Done. Blank required token → fill in ~/.claude.json and restart the agent."
+echo "Note: checks this agent's MCP-config env (+ SciVerse ~/.sciverse/credentials.json)."
+echo "Done. Blank required token → fill it in your agent's own config and restart."

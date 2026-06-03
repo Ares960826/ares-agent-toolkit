@@ -68,6 +68,19 @@ Outputs per doc: `<name>.md`, `<name>_content_list.json`, `<name>_middle.json`, 
 - MCP: `npx -y sciverse-mcp-server`, env `SCIVERSE_API_TOKEN` (`sv-...`). Tools: `search_papers`, `semantic_search`, `list_catalog`, `read_content`, `get_resource`.
 - REST base (if calling directly): `https://api.sciverse.space` — endpoints `/agentic-search`, `/meta-search`, `/meta-catalog`, `/content`, `/resource`. Header: `Authorization: Bearer <TOKEN>`.
 - Token: https://sciverse.space/tokens (≤10 per account, long-lived). Same token also works for DianShi (`https://dianshi.opendatalab.com/api/mcp`) and Skills.
+- **Token resolution order** (per `sciverse-mcp-server`): MCP-config `env` → `SCIVERSE_API_TOKEN`
+  shell env → `~/.sciverse/credentials.json` (written by `sciverse auth login`, mode 0600).
+  `scripts/check.sh` reports the credentials-file case as configured, not blank.
+
+## Caveats
+- **`setup.sh` is Claude-Code-specific** — it edits only `~/.claude.json`. For other agents
+  use the repo installer `install/install.sh` (writes each agent's own config file/format).
+- **`setup.sh` reformats `~/.claude.json`** — it round-trips the JSON (2-space indent), so
+  the file's whitespace changes. Data, tokens, and other servers are preserved and a backup
+  is written first; this is expected, not a bug. (The repo installer's `apply_mcp.py` behaves
+  the same for JSON agents.)
+- **`pdf2md <url>`** downloads to a temp file; if the URL has no known doc extension (e.g.
+  `arxiv.org/pdf/2604.21691`) it is saved as `.pdf` so MinerU recognizes the type.
 
 ## Typical research pipeline
 
@@ -77,7 +90,10 @@ Outputs per doc: `<name>.md`, `<name>_content_list.json`, `<name>_middle.json`, 
 
 ## New device
 
-`bash ~/.claude/skills/mineru-sciverse/setup.sh` then fill the two tokens. Idempotent; never overwrites existing tokens. Tokens are intentionally NOT stored in this skill.
+Run `setup.sh` from this skill's directory (location varies: `~/.claude/skills/…`,
+`~/.agents/skills/…`, or a project `.claude/skills/…`), then fill the two tokens.
+Idempotent; never overwrites existing tokens. Tokens are intentionally NOT stored in this skill.
+For multi-agent setup, prefer the repo installer `install/install.sh`.
 
 ## Uninstall / reclaim space
 

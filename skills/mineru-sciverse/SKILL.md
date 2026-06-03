@@ -55,20 +55,23 @@ State which path you used when results differ, so the user knows the trade-off t
 
 ## Preflight — check tokens before using a token-gated tool
 Before invoking `sciverse` or `mineru-cloud` in full mode, verify the token is set
-(especially on a fresh device). Quick check:
+(especially on a fresh device). Run the bundled checker **from this skill's directory**
+(don't hardcode a home path — the skill may live under `~/.claude/skills/`,
+`~/.agents/skills/`, or a project `.claude/skills/`):
 ```bash
-bash ~/.claude/skills/mineru-sciverse/scripts/check.sh
+bash "$(dirname "$0")/scripts/check.sh"   # or: cd into this skill dir, then: bash scripts/check.sh
 ```
 If a required token is blank, **do not silently fail** — tell the user exactly what
 to fill and where, then either proceed on the no-token path (local, or cloud Flash)
-or wait:
+or wait. Put tokens in **your agent's own** MCP config (`~/.claude.json` for Claude Code;
+`~/.codex/config.toml` for Codex; `~/.cursor/mcp.json` for Cursor; OpenCode's `opencode.json`):
 - `SCIVERSE_API_TOKEN` blank → SciVerse can't run at all. Get it at
-  https://sciverse.space/tokens (format `sv-...`), put it in `~/.claude.json`
-  → `mcpServers.sciverse.env`, restart the agent.
+  https://sciverse.space/tokens (format `sv-...`). Token resolution order is:
+  MCP-config `env` → `SCIVERSE_API_TOKEN` shell env → `~/.sciverse/credentials.json`
+  (written by `sciverse auth login`). `check.sh` detects the credentials-file case too.
 - `MINERU_API_TOKEN` blank → `mineru-cloud` still works in **Flash mode** (≤20p/10MB,
-  md only). For scale, get a token at https://mineru.net (API management page), put it
-  in `~/.claude.json` → `mcpServers.mineru-cloud.env`, restart. Meanwhile local
-  `pdf2md` covers anything Flash can't.
+  md only). For scale, get a token at https://mineru.net (API management page).
+  Meanwhile local `pdf2md` covers anything Flash can't.
 
 ## Usage
 
@@ -101,11 +104,20 @@ Tools: `search_papers`, `semantic_search`, `list_catalog`, `read_content`, `get_
 - "语义检索：low-rank adaptation 的后续工作"
 
 ## Setup on a new device
-Idempotent bootstrap — never overwrites existing tokens, backs up first:
+Idempotent bootstrap — never overwrites existing tokens, backs up first. Run it
+**from this skill's directory** (path varies by install location):
 ```bash
-bash ~/.claude/skills/mineru-sciverse/setup.sh
+cd "$(dirname SKILL.md)"   # the dir containing this skill
+bash setup.sh
 ```
 Installs MinerU CLI (`uv`), the `pdf2md` wrapper, adds the `sciverse` + `mineru-cloud`
 MCP servers to `~/.claude.json` with **blank tokens**, creates `~/mineru-downloads`,
 then prints the two-token manual step. Tokens are per-device/account and are
 intentionally NOT stored in this skill (safe to sync the skill folder via git/dotfiles).
+
+> **Scope note:** `setup.sh` is **Claude-Code-specific** — it writes only `~/.claude.json`.
+> For Codex/Cursor/OpenCode, use the repo-level installer (`install/install.sh` in
+> ares-agent-toolkit), which writes each agent's own config.
+> **JSON note:** `setup.sh` round-trips `~/.claude.json` (content preserved, tokens & other
+> servers untouched, backup written first), but it does re-serialize the file with 2-space
+> indent — i.e. it reformats whitespace of Claude's global state file. Harmless but expected.
