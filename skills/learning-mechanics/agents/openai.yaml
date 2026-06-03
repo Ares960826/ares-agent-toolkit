@@ -1,0 +1,7 @@
+interface:
+  display_name: "Learning Mechanics"
+  short_description: "Theory-guided deep learning training, scaling, and debugging"
+  default_prompt: "Use $learning-mechanics to design a theory-guided training experiment and hyperparameter plan."
+
+policy:
+  allow_implicit_invocation: true

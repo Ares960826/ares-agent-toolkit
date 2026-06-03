@@ -20,8 +20,10 @@ description: >-
 Distilled from Simon, Kunin, Atanasov et al., *There Will Be a Scientific Theory of
 Deep Learning* (arXiv 2604.21691). It is a position paper, not an algorithm — so this
 skill turns its named, falsifiable phenomena into **decision rules, checklists, and
-pseudo-code** an agent can apply while writing DL code. Every claim below is from the
-paper. Where the paper says a thing is heuristic/unproven, it is flagged as such.
+pseudo-code** an agent can apply while writing DL code. The *phenomena and scalings* below
+are paper-derived; the *engineering recommendations* layered on them (library choices,
+instrumentation, debugging order) are standard practitioner guidance, not paper text. Where
+the paper flags a thing as heuristic/unproven, so does this skill.
 
 For the deeper paper-derived rationale (the five pillars, proxy catalog, limit theory,
 situation→lens decision table), read `references/core-method.md` only when a task needs
@@ -82,8 +84,10 @@ fast cheap experiments over assumptions** — measure the regime before reasonin
 - **Choosing batch size itself** is a serial-time vs. total-compute tradeoff (Pareto
   hyperbola); the knob is the **critical batch size**. Small batch → cheaper but more
   serial steps; full batch → fewest steps but most compute.
-- `[learning rate]·[batch size]` ≈ "SGD noise temperature" — a useful single knob for
-  the implicit regularization strength (see #4).
+- **`η / B` (learning rate ÷ batch size) ≈ the SGD "noise scale" / temperature** — the
+  single knob for implicit-regularization strength: large LR + small batch ⇒ more gradient
+  noise ⇒ stronger curvature regularization (see #4). Consistency check: the linear scaling
+  rule (`η ∝ B`) is exactly what holds `η / B` fixed, so the trajectory stays invariant.
 
 ### 3. Lazy vs. rich — pick your regime by init / output scale
 - **Lazy (kernel/NTK) regime:** large init/output scale → weights barely move, dynamics
@@ -189,9 +193,10 @@ Without these, a "failed prediction" is unattributable.
 
 ## Honesty notes
 - This is a *position/theory* paper: no single algorithm or benchmark result to reproduce.
-  Equations above (deep linear net, NTK linearization, neural feature ansatz) and the
-  `2/η`, `1/width`, `√(batch)` scalings are quoted from it; nothing here is fabricated.
+  The physics — deep linear net, NTK linearization, neural feature ansatz, and the
+  `2/η`, `1/width`, `√(batch)`, `η/B` scalings — is quoted from it, not fabricated. The
+  engineering advice (e.g. "use a μP-aware library", the logging/instrumentation lists,
+  the debugging order) is added practitioner guidance, not paper text — treat it as such.
 - Items flagged heuristic (neural feature ansatz) or unproven (Discretization Hypothesis,
   a-priori scaling exponents) are exactly the ones the paper itself flags. Don't overclaim.
 - Further material: `learningmechanics.pub`; deeper rationale in `references/core-method.md`.
-</content>

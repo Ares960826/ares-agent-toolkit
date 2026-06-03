@@ -102,4 +102,3 @@ model/data choices *before* attaching an explanation to one run.
 - Explicitly heuristic in the paper: the **neural feature ansatz**.
   Explicitly unproven: the **Discretization Hypothesis** and **a-priori scaling exponents**.
   Do not present these as established.
-</content>
