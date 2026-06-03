@@ -6,17 +6,36 @@ not write into each other's files).
 
 ## Skills (SKILL.md)
 
-| Agent | Skills location | Shares with Claude Code? |
-|-------|-----------------|--------------------------|
-| **Claude Code** | `~/.claude/skills/<name>/SKILL.md` | — (this is the origin) |
-| **Codex** (OpenAI CLI) | `~/.agents/skills/<name>/SKILL.md` (user) · `.agents/skills/` (repo) | **No** — different dir. Same SKILL.md *format* though, so the files are portable; the installer copies them into both. |
-| **Cursor** | ❌ no SKILL.md system. Uses project rules `.cursor/rules/*.mdc` (+ `AGENTS.md` for instructions). | **No** — must hand-port skill guidance into a rule. |
-| **OpenCode** | ❌ no SKILL.md system. Uses `AGENTS.md` (+ `instructions` in config). | **No** — reference `skills/*/SKILL.md` from an `AGENTS.md`. |
+**All four agents support the Agent Skills standard (SKILL.md).** They also cross-read each
+other's home skill dirs, so you do NOT install into all four — two producer dirs cover everyone.
 
-> The `~/.agents/skills` path is an emerging vendor-neutral convention. Claude Code does
-> **not** read it today (it reads `~/.claude/skills`), so Claude and Codex skill dirs are
-> separate and the installer populates each. If a future Claude Code reads `~/.agents/skills`,
-> these become a shared location — re-check before symlinking.
+Home-level discovery (verified against each vendor's docs, 2026-06):
+
+| Agent | Reads its own dir | ALSO reads (compat) |
+|-------|-------------------|---------------------|
+| **Claude Code** | `~/.claude/skills/` | — |
+| **Codex** | `~/.agents/skills/` | (`~/.codex/skills/` legacy alias on some builds) |
+| **Cursor** | `~/.cursor/skills/`, `~/.agents/skills/` | **`~/.claude/skills/`**, `~/.codex/skills/` |
+| **OpenCode** | `~/.config/opencode/skills/` | **`~/.claude/skills/`**, `~/.agents/skills/` |
+
+### Which dirs are shared → where the installer writes
+- **`~/.claude/skills/`** is read by **Claude Code + Cursor + OpenCode** (3 of 4).
+- **`~/.agents/skills/`** is read by **Codex + Cursor + OpenCode** (3 of 4).
+- Their union covers all four, and every agent reads at least one. So the installer writes
+  skills to **only these two dirs**:
+  - `~/.claude/skills/` whenever Claude / Cursor / OpenCode is a target;
+  - `~/.agents/skills/` only when Codex is a target.
+  Cursor and OpenCode are "aggregators" — they pick the skills up automatically; we never
+  write into `.cursor/skills` or `.config/opencode/skills`.
+- No single dir is read by **both** Claude and Codex, so two dirs is the minimum. When both a
+  `~/.claude/skills` consumer and Codex are present, Cursor/OpenCode see the skill in both dirs;
+  the Agent Skills spec keys skills by a unique `name`, so they **dedupe** and it won't double-apply.
+- Project-level equivalents (`.agents/skills/`, `.claude/skills/`, `.cursor/skills/`,
+  `.opencode/skills/`) work the same way if you'd rather colocate a skill with a repo.
+
+> This is the genuine "shared tool system" case: **Cursor and OpenCode share Claude Code's
+> `~/.claude/skills`** (and Codex's `~/.agents/skills`). MCP config, by contrast, is NOT shared —
+> see below.
 
 ## MCP servers
 

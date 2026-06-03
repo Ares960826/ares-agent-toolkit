@@ -50,21 +50,35 @@ if [[ $DRY -eq 0 ]]; then
   case ":$PATH:" in *":$HOME_DIR/.local/bin:"*) ;; *) note "add ~/.local/bin to PATH";; esac
 fi
 
-# ---- 2) skills per agent ----------------------------------------------------
+# ---- 2) skills (Agent Skills standard, cross-agent discovery) ---------------
+# All four agents support SKILL.md and auto-discover from shared home dirs:
+#   ~/.claude/skills  -> read by Claude Code, Cursor, OpenCode
+#   ~/.agents/skills  -> read by Codex, Cursor, OpenCode
+# So we only populate these two producer dirs (never .cursor/.opencode separately),
+# choosing the minimal set that covers the targeted agents without needless dupes.
 copy_skills(){  # $1 = dest dir
   local dest="$1"
   [[ $DRY -eq 1 ]] && { echo "  (dry) would copy skills -> ${dest/$HOME_DIR/\~}"; return; }
   mkdir -p "$dest"
   cp -R "$ROOT/skills/." "$dest/"
 }
+need_claude_dir=0; need_agents_dir=0
 for ag in "${AGENT_ARR[@]}"; do
   case "$ag" in
-    claude) say "Skills -> ~/.claude/skills"; copy_skills "$HOME_DIR/.claude/skills";;
-    codex)  say "Skills -> ~/.agents/skills"; copy_skills "$HOME_DIR/.agents/skills";;
-    cursor) note "Cursor has no SKILL.md system — skills not copied. It uses .cursor/rules/*.mdc. Reference skills/*/SKILL.md manually or add a rule that @-includes them.";;
-    opencode) note "OpenCode has no SKILL.md system — it uses AGENTS.md. Point an AGENTS.md at skills/*/SKILL.md if you want the guidance loaded.";;
+    claude|cursor|opencode) need_claude_dir=1;;  # all read ~/.claude/skills
+    codex) need_agents_dir=1;;                    # only Codex needs ~/.agents/skills
   esac
 done
+if [[ $need_claude_dir -eq 1 ]]; then
+  say "Skills -> ~/.claude/skills  (discovered by Claude, Cursor, OpenCode)"
+  copy_skills "$HOME_DIR/.claude/skills"
+fi
+if [[ $need_agents_dir -eq 1 ]]; then
+  say "Skills -> ~/.agents/skills  (discovered by Codex, Cursor, OpenCode)"
+  copy_skills "$HOME_DIR/.agents/skills"
+fi
+[[ $need_claude_dir -eq 1 && $need_agents_dir -eq 1 ]] && \
+  note "Cursor/OpenCode read both dirs; skills are deduped by their unique 'name', so the same skill won't double-apply."
 
 # ---- 3) MCP servers per agent (native format, idempotent) -------------------
 say "Applying MCP servers (blank tokens, never clobbering existing)…"

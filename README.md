@@ -36,6 +36,12 @@ Then fill the two tokens in **each agent's own** config and restart that agent:
 
 Useful flags: `--agents claude,codex` · `--dry-run`.
 
+All four agents implement the **Agent Skills** standard and cross-read each other's home
+skill dirs, so the installer only populates `~/.claude/skills` (read by Claude/Cursor/OpenCode)
+and `~/.agents/skills` (read by Codex/Cursor/OpenCode) — never per-agent duplicates. MCP config
+is the opposite: each agent has its own file/format, so it's written four separate ways. See
+`docs/COMPATIBILITY.md`.
+
 ## Design rules
 - **One source of truth** (`mcp/servers.json`); the installer fans it out per agent.
 - **Each agent in its own lane** — only ever writes its own config file. No cross-writes
