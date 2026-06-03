@@ -8,3 +8,4 @@ mineru-downloads/
 **/*.secret
 **/.DS_Store
 __pycache__/
+.omc/
