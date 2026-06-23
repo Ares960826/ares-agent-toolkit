@@ -13,6 +13,7 @@ carry MCP server definitions and a multi-agent installer.
 skills/
   mineru-sciverse/    # high-fidelity PDF→Markdown (MinerU) + literature search (SciVerse)
   learning-mechanics/ # applied "learning mechanics" DL-engineering reference (from arXiv 2604.21691)
+  tentacle/           # local Claude Code + native SSH into a remote Linux server (submodule)
 mcp/
   servers.json        # canonical, agent-neutral MCP server defs (source of truth)
 install/
@@ -24,7 +25,7 @@ docs/
 
 ## Quick start (new device)
 ```bash
-git clone <this-repo> ~/agent-toolkit
+git clone --recurse-submodules <this-repo> ~/agent-toolkit   # --recurse-submodules pulls the tentacle skill
 cd ~/agent-toolkit
 bash install/install.sh                 # auto-detects installed agents
 # optional: also install local MinerU CLI (~2GB, offline parsing)
