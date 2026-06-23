@@ -26,7 +26,7 @@ done
 say(){ printf '\033[1;36m==>\033[0m %s\n' "$*"; }
 note(){ printf '\033[1;33m  note:\033[0m %s\n' "$*"; }
 
-# ---- 0) ensure bundled submodule skills (e.g. tentacle) are populated -------
+# ---- 0) ensure bundled submodule skills (e.g. luffy-arm) are populated -------
 # Some skills are vendored as git submodules; a plain `git clone` leaves them empty.
 if [[ -f "$ROOT/.gitmodules" ]] && command -v git >/dev/null 2>&1; then
   git -C "$ROOT" submodule update --init --recursive >/dev/null 2>&1 \
