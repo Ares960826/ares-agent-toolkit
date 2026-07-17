@@ -1,0 +1,24 @@
+{
+  "name": "ares-toolkit",
+  "owner": {
+    "name": "Ares960826",
+    "url": "https://github.com/Ares960826"
+  },
+  "metadata": {
+    "description": "Ares' collection of Claude Code agent skills.",
+    "url": "https://github.com/Ares960826/ares-agent-toolkit"
+  },
+  "plugins": [
+    {
+      "name": "luffy-arm",
+      "source": {
+        "source": "github",
+        "repo": "Ares960826/luffy-arm"
+      },
+      "description": "Give a local AI agent a remote hand over SSH — read/run/diagnose/pull from a remote Linux server behind a tiered, unprivileged, read-only safety model.",
+      "homepage": "https://github.com/Ares960826/luffy-arm",
+      "license": "MIT",
+      "keywords": ["ssh", "remote", "security", "sftp", "acl"]
+    }
+  ]
+}
