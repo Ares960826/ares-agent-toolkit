@@ -67,7 +67,17 @@ copy_skills(){  # $1 = dest dir
   local dest="$1"
   [[ $DRY -eq 1 ]] && { echo "  (dry) would copy skills -> ${dest/$HOME_DIR/\~}"; return; }
   mkdir -p "$dest"
-  cp -R "$ROOT/skills/." "$dest/"
+  local skill
+  for skill in "$ROOT"/skills/*; do
+    [[ -d "$skill" ]] || continue
+    if [[ "$(basename "$skill")" == luffy-arm ]]; then
+      # Use the product allowlist and install the independently discoverable switches.
+      [[ -f "$skill/install.sh" ]] || { echo "luffy-arm submodule is not populated" >&2; return 1; }
+      LUFFY_ARM_DIR="$dest" bash "$skill/install.sh"
+    else
+      cp -R "$skill" "$dest/"
+    fi
+  done
 }
 need_claude_dir=0; need_agents_dir=0
 for ag in "${AGENT_ARR[@]}"; do

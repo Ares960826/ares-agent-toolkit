@@ -15,10 +15,16 @@
         "source": "github",
         "repo": "Ares960826/luffy-arm"
       },
-      "description": "Give a local AI agent a remote hand over SSH — read/run/diagnose/pull from a remote Linux server behind a tiered, unprivileged, read-only safety model.",
+      "description": "Connect local AI agents to multiple registered SSH servers with key or user-opened password sessions, timed access and scoped shutdown (v1.8.0).",
       "homepage": "https://github.com/Ares960826/luffy-arm",
       "license": "MIT",
-      "keywords": ["ssh", "remote", "security", "sftp", "acl"]
+      "keywords": [
+        "ssh",
+        "remote",
+        "security",
+        "sftp",
+        "acl"
+      ]
     }
   ]
 }
