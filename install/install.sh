@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # agent-toolkit installer — install our DIY skills + MCP servers into whichever
 # AI coding agents you use, each in its OWN config location/format. Idempotent;
-# never overwrites existing tokens. No secrets are stored in this repo.
+# never overwrites existing entries. No secrets are stored in this repo or in any
+# agent config: tokens live in the OS secret store and are injected by with-secret.
 #
 #   bash install/install.sh                 # auto-detect installed agents
 #   bash install/install.sh --agents claude,codex
@@ -55,6 +56,14 @@ if [[ $DRY -eq 0 ]]; then
   install -m 0755 "$ROOT/skills/mineru-sciverse/pdf2md" "$HOME_DIR/.local/bin/pdf2md"
   say "Installed pdf2md -> ~/.local/bin/pdf2md"
   case ":$PATH:" in *":$HOME_DIR/.local/bin:"*) ;; *) note "add ~/.local/bin to PATH";; esac
+  # secret wrapper used by token-gated MCP servers (path must match mcp/servers.json)
+  if [[ -e "$HOME_DIR/.claude/bin/with-secret" ]]; then
+    note "~/.claude/bin/with-secret already exists; left untouched"
+  else
+    mkdir -p "$HOME_DIR/.claude/bin"
+    install -m 0755 "$ROOT/bin/with-secret" "$HOME_DIR/.claude/bin/with-secret"
+    say "Installed with-secret -> ~/.claude/bin/with-secret"
+  fi
 fi
 
 # ---- 2) skills (Agent Skills standard, cross-agent discovery) ---------------
@@ -98,7 +107,7 @@ fi
   note "Cursor/OpenCode read both dirs; skills are deduped by their unique 'name', so the same skill won't double-apply."
 
 # ---- 3) MCP servers per agent (native format, idempotent) -------------------
-say "Applying MCP servers (blank tokens, never clobbering existing)…"
+say "Applying MCP servers (tokens via secret store, never clobbering existing)…"
 DRY_FLAG=(); [[ $DRY -eq 1 ]] && DRY_FLAG=(--dry-run)
 AG_FLAGS=(); for ag in "${AGENT_ARR[@]}"; do AG_FLAGS+=(--agent "$ag"); done
 python3 "$ROOT/install/apply_mcp.py" "${AG_FLAGS[@]}" "${DRY_FLAG[@]}"
@@ -112,11 +121,14 @@ fi
 cat <<EOF
 
 ────────────────────────────────────────────────────────────────────
- Done. Fill blank tokens in EACH agent's OWN config, then restart it:
+ Done. Store each token ONCE in the OS secret store (never in a config), then
+ restart the agents:
    SciVerse  SCIVERSE_API_TOKEN  (required)  -> https://sciverse.space/tokens
    MinerU    MINERU_API_TOKEN    (optional)  -> https://mineru.net
- Config files: claude=~/.claude.json  cursor=~/.cursor/mcp.json
-               codex=~/.codex/config.toml  opencode=~/.config/opencode/opencode.json
+ macOS : printf 'add-generic-password -U -s "claude-mcp:NAME" -a "%s" -w "VALUE"\n' "\$USER" | security -i
+ Linux : secret-tool store --label="claude-mcp:NAME" service "claude-mcp:NAME"
+ Check : bash ~/.claude/skills/mineru-sciverse/scripts/check.sh --online
+ mineru-cloud UPLOADS documents to mineru.net: agents must ask before using it.
  See docs/COMPATIBILITY.md for which agents share dirs and which don't.
 ────────────────────────────────────────────────────────────────────
 EOF

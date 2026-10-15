@@ -9,17 +9,18 @@
 
 | Component | Mechanism | Token | Location |
 |-----------|-----------|-------|----------|
-| MinerU local CLI | `uv tool install "mineru[core]"` | none | `~/.local/bin/mineru` |
+| MinerU local CLI | `uv tool install "mineru>=4,<5"` | none | `~/.local/bin/mineru` |
 | `pdf2md` wrapper | bundled script | none | `~/.local/bin/pdf2md` |
-| `mineru-cloud` MCP | `uvx mineru-open-mcp` | `MINERU_API_TOKEN` (optional; Flash mode works blank) | `~/.claude.json` |
-| `sciverse` MCP | `npx -y sciverse-mcp-server` | `SCIVERSE_API_TOKEN` (required) | `~/.claude.json` |
+| `mineru-cloud` MCP | `with-secret MINERU_API_TOKEN -- uvx mineru-open-mcp==1.0.22` | `MINERU_API_TOKEN` (JWT, expires) | each agent's config, via `install/install.sh` |
+| `sciverse` MCP | `with-secret SCIVERSE_API_TOKEN -- npx -y sciverse-mcp-server` | `SCIVERSE_API_TOKEN` (required) | each agent's config, via `install/install.sh` |
+| `with-secret` | repo `bin/with-secret` → `~/.claude/bin/with-secret` | reads `claude-mcp:NAME` from Keychain / secret-tool / 0600 file | — |
 
 ## Bundled scripts (in this skill folder)
 
 | Script | What it does |
 |--------|--------------|
-| `setup.sh` | Idempotent bootstrap for a new device; never overwrites tokens; backs up `~/.claude.json` first. |
-| `scripts/check.sh` | Preflight/doctor — prints install + token status (no secrets). Run before token-gated tools. |
+| `setup.sh` | Idempotent local bootstrap: MinerU CLI, `pdf2md`, output dir. Edits no agent config and handles no tokens. |
+| `scripts/check.sh` | Preflight/doctor — install status, token source + JWT expiry; `--online` adds one HTTP probe per service. Never prints secrets. |
 | `scripts/batch-local.sh` | Parse an entire folder LOCALLY (the no-token, on-machine batch fallback). |
 | `pdf2md` | Single-file local wrapper (installed to `~/.local/bin`). |
 
@@ -37,29 +38,30 @@
 Rule: reach for the built-in `pdf` skill for **mechanical** PDF work; reach for MinerU
 when **parsing fidelity** of complex/academic content matters.
 
-## Disk / resource notes (measured on M3 Pro / 18GB)
+## MinerU 4 local runtime
 
-- MinerU program (incl. torch): ~1.0 GB at `~/.local/share/uv/tools/mineru`
-- pipeline models: ~1.1 GB at `~/.cache/modelscope` (biggest: formula model 773MB)
-- Total one-time ~2.1 GB. `hybrid/vlm` backends download an extra ~1–2 GB on first use.
-- Runtime: only while actively parsing; bursty MPS+CPU, ~3–6 GB RAM peak; nothing like training. Idle = zero.
-
-## MinerU CLI cheatsheet
+The previous V3 pipeline/hybrid resource measurements do not describe V4. On Apple Silicon, install the base MinerU package. Download and verify the V4 models before claiming OCR/standard readiness.
 
 ```bash
-mineru -p IN -o OUT -b pipeline           # general, most compatible on Mac
-mineru -p IN -o OUT -m ocr                # force OCR (scanned)
-mineru -p IN -o OUT -s 0 -e 9             # page range 0..9
-mineru -p IN -o OUT -l en                 # OCR language hint
-mineru -p IN -o OUT -b hybrid-auto-engine # higher accuracy VLM (heavier)
-MINERU_MODEL_SOURCE=huggingface mineru …  # switch model source (default modelscope)
+mineru version --json
+mineru-kit models download --tier standard --source huggingface
+mineru-kit models verify --tier standard
+pdf2md paper.pdf out/ --tier standard
+pdf2md scan.pdf out/ --tier basic --ocr-mode ocr
+pdf2md paper.pdf out/ --pages 1-10
+mineru-kit parse paper.pdf -o paper.md --tier standard
+mineru parse paper.pdf --json
 ```
-Outputs per doc: `<name>.md`, `<name>_content_list.json`, `<name>_middle.json`, `<name>_model.json`, `images/`, plus annotated `_layout.pdf` / `_span.pdf`.
+
+The wrapper extracts the V4 ZIP bundle into its output directory. V4 output is not guaranteed to include every V3 debug file. `mineru parse` initially reads 10 pages; follow its locators and continuation. `mineru-kit parse` converts all pages by default.
+
+For V4 HTTP integrations use `/v1/health`, `/v1/tiers`, `/v1/uploads`, `/v1/parse/jobs` and `/v1/files`. Old `/file_parse` clients require an actual migration; merely changing the URL is insufficient. Cloud API `/api/v4` naming is independent from the local package version.
 
 ## mineru-cloud MCP
 
 - Tools: `parse_documents` (local paths and/or remote URLs → Markdown), `get_ocr_languages`.
-- Env: `MINERU_API_TOKEN` (blank → Flash mode: free, ≤20p/10MB, markdown only), `OUTPUT_DIR` (default `~/mineru-downloads`).
+- **Uploads documents to mineru.net.** Use only after the user approves uploading the specific documents (global CLAUDE.md/AGENTS.md rule; overrides the server's own "call immediately" instruction).
+- Env: `MINERU_API_TOKEN` via `with-secret` (token: ≤200p/200MB, batch ≤200 files; tokenless Flash: ≤20p/10MB, single file, IP rate-limited; the wrapper uses `--optional`, so a missing token falls back to Flash), `OUTPUT_DIR` (default `~/mineru-downloads`).
 - Single-file parses return inline markdown; batch parses save to `OUTPUT_DIR` and return file metadata + a zip URL.
 - Token: https://mineru.net (API management). Flash docs: https://mineru.net/apiManage/docs
 
@@ -70,35 +72,39 @@ Outputs per doc: `<name>.md`, `<name>_content_list.json`, `<name>_middle.json`, 
 - Token: https://sciverse.space/tokens (≤10 per account, long-lived). Same token also works for DianShi (`https://dianshi.opendatalab.com/api/mcp`) and Skills.
 - **Token resolution order** (per `sciverse-mcp-server`): MCP-config `env` → `SCIVERSE_API_TOKEN`
   shell env → `~/.sciverse/credentials.json` (written by `sciverse auth login`, mode 0600).
+  The credentials-file fallback only applies to an unwrapped server: the installer wraps sciverse
+  with `with-secret SCIVERSE_API_TOKEN`, which exits before the server starts if the secret is missing.
   `scripts/check.sh` reports the credentials-file case as configured, not blank.
 
 ## Caveats
-- **`setup.sh` is Claude-Code-specific** — it edits only `~/.claude.json`. For other agents
-  use the repo installer `install/install.sh` (writes each agent's own config file/format).
-- **`setup.sh` reformats `~/.claude.json`** — it round-trips the JSON (2-space indent), so
-  the file's whitespace changes. Data, tokens, and other servers are preserved and a backup
-  is written first; this is expected, not a bug. (The repo installer's `apply_mcp.py` behaves
-  the same for JSON agents.)
+- **MCP config lives in the repo installer only** — `install/install.sh` → `apply_mcp.py` writes
+  each agent's own file/format, adds only missing servers, and wraps token-gated servers with
+  `with-secret`. It round-trips JSON configs (2-space indent) and writes a backup first.
 - **`pdf2md <url>`** downloads to a temp file; if the URL has no known doc extension (e.g.
   `arxiv.org/pdf/2604.21691`) it is saved as `.pdf` so MinerU recognizes the type.
 
 ## Typical research pipeline
 
 1. `sciverse` → find / semantic-search relevant papers, get PDFs.
-2. Parse them: single → local `pdf2md`; batch/large → `mineru-cloud`.
+2. Parse them locally with `pdf2md` (single file or directory). Use `mineru-cloud` for batch/large
+   jobs only after the user approves uploading those documents.
 3. Hand the Markdown to the agent for analysis / writing / Zotero notes.
 
 ## New device
 
-Run `setup.sh` from this skill's directory (location varies: `~/.claude/skills/…`,
-`~/.agents/skills/…`, or a project `.claude/skills/…`), then fill the two tokens.
-Idempotent; never overwrites existing tokens. Tokens are intentionally NOT stored in this skill.
-For multi-agent setup, prefer the repo installer `install/install.sh`.
+1. `bash install/install.sh --agents claude,codex[,cursor,opencode] --with-mineru-cli` from an
+   ares-agent-toolkit checkout (skills, `pdf2md`, `with-secret`, MCP servers, local CLI).
+2. Store tokens once in the OS secret store (never in configs or this repo):
+   `printf 'add-generic-password -U -s "claude-mcp:NAME" -a "%s" -w "VALUE"\n' "$USER" | security -i`
+   (Linux: `secret-tool store --label="claude-mcp:NAME" service "claude-mcp:NAME"`).
+3. `bash scripts/check.sh --online`, then restart the agents.
 
 ## Uninstall / reclaim space
 
 ```bash
 uv tool uninstall mineru          # remove program
-rm -rf ~/.cache/modelscope        # remove downloaded models
+rm -rf ~/.mineru/models           # MinerU 4 models
+# Hugging Face cache: ~/.cache/huggingface/hub/models--opendatalab--MinerU-4_models_torch (and other MinerU* repos)
+# ~/.cache/modelscope may hold MinerU 3 models from older installs
 # then delete the two servers from ~/.claude.json if desired
 ```

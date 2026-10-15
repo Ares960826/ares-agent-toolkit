@@ -1,62 +1,122 @@
-#!/usr/bin/env bash
-# pdf2md — convenience wrapper around MinerU for Claude Code / terminal use.
-# Converts a PDF/image/Office doc into LLM-ready Markdown + JSON.
-#
-# Usage:
-#   pdf2md <input.pdf> [output_dir] [extra mineru args...]
-#
-# Examples:
-#   pdf2md paper.pdf                       # -> ./paper/  (markdown, json, images)
-#   pdf2md paper.pdf out/                  # -> ./out/
-#   pdf2md scan.pdf out/ -m ocr            # force OCR for scanned PDFs
-#   pdf2md paper.pdf out/ -s 0 -e 4        # only pages 0..4
-#   pdf2md paper.pdf out/ -b hybrid-auto-engine   # higher-accuracy VLM backend
-#
-# Defaults chosen for Apple Silicon reliability:
-#   - backend: pipeline   (most compatible; override with -b)
-#   - model source: modelscope (faster in CN; set MINERU_MODEL_SOURCE=huggingface to switch)
-set -euo pipefail
+#!/usr/bin/env python3
+"""pdf2md INPUT [OUTPUT_DIR] [--tier standard|basic|advanced|flash] [options]
 
-if [[ $# -lt 1 || "$1" == "-h" || "$1" == "--help" ]]; then
-  sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'
-  exit 0
-fi
+Local MinerU 4 conversion to an extracted Markdown/JSON/assets bundle.
+Legacy -m, -s/-e and -b pipeline/hybrid options are translated explicitly.
+For direct V4 file output use mineru-kit parse INPUT -o OUTPUT.md.
 
-INPUT="$1"; shift
-# Accept an http(s) URL: download it to a temp file first, then parse.
-if [[ "$INPUT" == http://* || "$INPUT" == https://* ]]; then
-  url="$INPUT"
-  tmpd="$(mktemp -d "${TMPDIR:-/tmp}/pdf2md.XXXXXX")"
-  fname="$(basename "${url%%\?*}")"
-  # MinerU keys off the file extension. Keep the name only if it already ends in a
-  # KNOWN doc extension; otherwise (e.g. arxiv "2604.21691") default to .pdf.
-  ext="$(printf '%s' "$fname" | tr '[:upper:]' '[:lower:]')"
-  case "$ext" in
-    *.pdf|*.png|*.jpg|*.jpeg|*.jp2|*.webp|*.gif|*.bmp|*.doc|*.docx|*.ppt|*.pptx|*.xls|*.xlsx) : ;;
-    *) fname="${fname}.pdf" ;;
-  esac
-  echo "pdf2md: downloading $url -> $tmpd/$fname" >&2
-  curl -fsSL -m 120 "$url" -o "$tmpd/$fname" || { echo "pdf2md: download failed: $url" >&2; exit 1; }
-  INPUT="$tmpd/$fname"
-fi
-if [[ ! -e "$INPUT" ]]; then
-  echo "pdf2md: input not found: $INPUT" >&2; exit 1
-fi
+Local only by default. --remote / --remote-url upload the document to a remote
+parse service and are refused unless MINERU_ALLOW_REMOTE=1 is set for this run
+(set it only after the user approved uploading that document). --api-key is
+always refused because argv is visible to other processes; use MINERU_API_KEY.
+"""
+import os
+from pathlib import Path
+import shutil
+import subprocess
+import sys
+import tempfile
+from urllib.parse import urlparse, unquote
+import zipfile
 
-# Optional 2nd positional arg = output dir (only if it doesn't start with '-')
-OUTDIR=""
-if [[ $# -ge 1 && "${1:0:1}" != "-" ]]; then OUTDIR="$1"; shift; fi
-if [[ -z "$OUTDIR" ]]; then
-  base="$(basename "$INPUT")"; OUTDIR="./${base%.*}"
-fi
-mkdir -p "$OUTDIR"
 
-export MINERU_MODEL_SOURCE="${MINERU_MODEL_SOURCE:-modelscope}"
+def main(argv):
+    if not argv or argv[0] in ('-h', '--help'):
+        print(__doc__)
+        return 0
+    source = argv.pop(0)
+    output = argv.pop(0) if argv and not argv[0].startswith('-') else None
+    forwarded = []
+    tier = None
+    legacy_tier = None
+    start = end = None
+    pages = False
+    while argv:
+        arg = argv.pop(0)
+        key, sep, inline = arg.partition('=')
+        if key in ('--tier', '-b', '--backend', '-m', '--method', '-s', '--start', '-e', '--end'):
+            value = inline if sep else (argv.pop(0) if argv else None)
+            if value is None:
+                raise ValueError(f'missing value for {key}')
+            if key == '--tier':
+                tier = value
+            elif key in ('-b', '--backend'):
+                mapping = {'pipeline': 'basic', 'hybrid-auto-engine': 'standard', 'vlm-auto-engine': 'standard'}
+                if value not in mapping:
+                    raise ValueError(f'unsupported legacy backend {value}; select a V4 --tier')
+                legacy_tier = mapping[value]
+                print(f'pdf2md: legacy backend {value} -> V4 tier {legacy_tier}', file=sys.stderr)
+            elif key in ('-m', '--method'):
+                forwarded += ['--ocr-mode', value]
+            elif key in ('-s', '--start'):
+                start = int(value)
+            else:
+                end = int(value)
+        else:
+            if key in ('--format', '-f', '--output', '-o'):
+                raise ValueError(f'{key} is managed by pdf2md; use mineru-kit for direct file output')
+            if key == '--api-key':
+                raise ValueError('--api-key is refused (visible in ps); export MINERU_API_KEY instead')
+            if key in ('--remote', '--remote-url') and os.environ.get('MINERU_ALLOW_REMOTE') != '1':
+                raise ValueError(f'{key} uploads the document; get user approval, then rerun with MINERU_ALLOW_REMOTE=1')
+            if key in ('--pages', '-p'):
+                pages = True
+            forwarded.append(arg)
+    if tier and legacy_tier and tier != legacy_tier:
+        raise ValueError('conflicting --tier and legacy --backend')
+    if start is not None or end is not None:
+        if pages:
+            raise ValueError('do not combine --pages with legacy -s/-e')
+        start = 0 if start is None else start
+        if start < 0 or (end is not None and end < start):
+            raise ValueError('legacy page indices must be nonnegative and end >= start')
+        forwarded += ['--pages', f'{start + 1}-{end + 1}' if end is not None else f'{start + 1}-r1']
+    cmd = shutil.which('mineru-kit') or str(Path.home()/'.local/bin/mineru-kit')
+    if not Path(cmd).exists():
+        raise ValueError('MinerU 4 mineru-kit is not installed')
+    with tempfile.TemporaryDirectory(prefix='pdf2md-v4-') as tmp:
+        if source.startswith(('http://', 'https://')):
+            name = Path(unquote(urlparse(source).path)).name or 'document.pdf'
+            known = {'.pdf','.png','.jpg','.jpeg','.jp2','.webp','.gif','.bmp','.tiff','.doc','.docx','.ppt','.pptx','.xls','.xlsx','.rtf','.odt','.ods','.odp','.epub','.ofd','.html','.htm','.mhtml','.mht','.csv','.tsv'}
+            if Path(name).suffix.lower() not in known:
+                name += '.pdf'
+            downloaded = Path(tmp)/name
+            subprocess.run(['curl', '-fSL', '--max-time', '120', source, '-o', str(downloaded)], check=True)
+            source = str(downloaded)
+        path = Path(source)
+        if not path.exists():
+            raise ValueError(f'input not found: {source}')
+        output = Path(output or f'./{path.stem}')
+        output.mkdir(parents=True, exist_ok=True)
+        native = path.is_file() and path.suffix.lower() not in {'.pdf','.png','.jpg','.jpeg','.jp2','.webp','.gif','.bmp','.tiff'}
+        selected = tier or legacy_tier or ('flash' if native else 'standard')
+        archive_output = Path(tmp)/'bundles'
+        archive_output.mkdir()
+        env = os.environ.copy()
+        env.setdefault('MINERU_MODEL_SOURCE', 'huggingface')
+        print(f'pdf2md: {path} -> {output} (MinerU 4 tier={selected})', file=sys.stderr)
+        result = subprocess.run([cmd, 'parse', str(path), '-o', str(archive_output), '--format', 'zip', '--tier', selected, *forwarded], env=env)
+        if result.returncode:
+            return result.returncode
+        archives = list(archive_output.rglob('*.zip'))
+        if not archives:
+            raise ValueError('MinerU returned no ZIP bundle')
+        for archive in archives:
+            destination_root = output/archive.stem if path.is_dir() else output
+            destination_root.mkdir(parents=True, exist_ok=True)
+            with zipfile.ZipFile(archive) as z:
+                for entry in z.infolist():
+                    destination = (destination_root/entry.filename).resolve()
+                    if not destination.is_relative_to(destination_root.resolve()) or (entry.external_attr >> 16) & 0o170000 == 0o120000:
+                        raise ValueError('unsafe path in ZIP output')
+                z.extractall(destination_root)
+        print(f'pdf2md: extracted {len(archives)} bundle(s) to {output}', file=sys.stderr)
+    return 0
 
-# Use -b pipeline by default unless the caller already passed a -b/--backend.
-have_backend=0
-for a in "$@"; do case "$a" in -b|--backend) have_backend=1;; esac; done
-if [[ $have_backend -eq 0 ]]; then set -- -b pipeline "$@"; fi
 
-echo "pdf2md: $INPUT -> $OUTDIR  (MINERU_MODEL_SOURCE=$MINERU_MODEL_SOURCE)" >&2
-exec mineru -p "$INPUT" -o "$OUTDIR" "$@"
+if __name__ == '__main__':
+    try:
+        sys.exit(main(sys.argv[1:]))
+    except (ValueError, OSError, subprocess.CalledProcessError) as error:
+        print(f'pdf2md: {error}', file=sys.stderr)
+        sys.exit(2)

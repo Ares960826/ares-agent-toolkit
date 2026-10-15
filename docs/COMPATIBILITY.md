@@ -61,10 +61,14 @@ Home-level discovery (verified against each vendor's docs, 2026-06):
 
 ### Single source of truth
 `mcp/servers.json` (agent-neutral) is the canonical definition. `install/apply_mcp.py`
-translates it into each agent's native file. To change a server, edit `servers.json` and
-re-run the installer — every agent stays in sync, in its own format, without manual TOML/JSON juggling.
+translates it into each agent's native file. The installer only **adds missing** servers and
+never modifies an existing entry, so re-running it does not propagate edits (version bumps, a
+switch to `with-secret`). To change an already-installed server, edit `servers.json`, then update
+or delete that server's entry in each agent's config by hand (or delete it and re-run the installer).
 
 ## Tokens
-Tokens live **only** in each device's real config files, written **blank** by the installer
-and filled by you. They are **never** stored in this repo. `.gitignore` blocks the common
-real-config filenames as a backstop.
+Tokens live **only** in each device's OS secret store under `claude-mcp:<NAME>` (macOS
+Keychain; Linux `secret-tool` or a mode-0600 file in `~/.config/with-secret/`). Every agent's
+config launches token-gated servers as `~/.claude/bin/with-secret NAME -- cmd ...`, so one
+stored token serves Claude, Codex, Cursor and OpenCode, and no config file contains it. Tokens
+are **never** stored in this repo; `.gitignore` blocks common real-config filenames as a backstop.

@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 """Apply the canonical MCP server defs (mcp/servers.json) into each agent's
-native config, in that agent's own format and file. Idempotent. Tokens are
-written BLANK and existing tokens are never overwritten.
+native config, in that agent's own format and file. Idempotent; existing
+entries are never overwritten. Tokens are never written into any config:
+servers with a token_env are launched as `with-secret [--optional] TOKEN_ENV
+-- cmd ...`, which reads the value from the OS secret store at start-up
+(--optional for required:false servers, so they still start without a token).
 
 Usage:
   python3 apply_mcp.py --agent claude --agent cursor ...   # specific agents
@@ -26,9 +29,21 @@ except Exception:
 AGENTS = ["claude", "cursor", "codex", "opencode"]
 
 
-def load_servers(path: Path) -> dict:
+def load_servers(path: Path):
     data = json.loads(path.read_text(encoding="utf-8"))
-    return data["servers"]
+    return data["servers"], data.get("secret_wrapper")
+
+
+def launch(s: dict, wrapper, home: Path):
+    """Return (command, args, env) for a server, wrapping token-gated ones."""
+    env = expand_env(s.get("env", {}), home)
+    tok = s.get("token_env")
+    env.pop(tok, None)
+    if tok and wrapper:
+        w = str(home) + wrapper[1:] if wrapper.startswith("~") else wrapper
+        names = [tok] if s.get("required") else ["--optional", tok]
+        return w, [*names, "--", s["command"], *s["args"]], env
+    return s["command"], list(s["args"]), env
 
 
 def expand_env(env: dict, home: Path) -> dict:
@@ -48,23 +63,19 @@ def backup(p: Path):
     return None
 
 
-def report(agent, name, action, token_env, token_val, required):
+def report(agent, name, action, token_env, required):
     if action == "skipped":
         state = "exists (left untouched)"
+    elif not token_env:
+        state = "added"
     else:
-        if not token_env:
-            state = "added"
-        elif token_val:
-            state = "added (token already set)"
-        elif required:
-            state = "added — TOKEN BLANK, REQUIRED"
-        else:
-            state = "added — token blank (optional / free tier)"
+        need = "REQUIRED" if required else "optional"
+        state = f"added — token read from secret store claude-mcp:{token_env} ({need})"
     print(f"  [{agent}] {name}: {state}")
 
 
 # ---------- JSON agents (claude / cursor) -------------------------------------
-def apply_json_mcpservers(agent, file: Path, servers, home, dry):
+def apply_json_mcpservers(agent, file: Path, servers, wrapper, home, dry):
     file.parent.mkdir(parents=True, exist_ok=True)
     cfg = {}
     if file.exists():
@@ -77,23 +88,22 @@ def apply_json_mcpservers(agent, file: Path, servers, home, dry):
     changed = False
     for name, s in servers.items():
         if name in m:
-            report(agent, name, "skipped", s.get("token_env"), None, s.get("required"))
+            report(agent, name, "skipped", s.get("token_env"), s.get("required"))
             continue
-        entry = {"command": s["command"], "args": s["args"],
-                 "env": expand_env(s.get("env", {}), home)}
+        cmd, args, env = launch(s, wrapper, home)
+        entry = {"command": cmd, "args": args, "env": env}
         if agent == "claude" and s.get("timeout_sec"):
             entry["timeout"] = s["timeout_sec"]
         m[name] = entry
         changed = True
-        tv = entry["env"].get(s.get("token_env", ""), "")
-        report(agent, name, "added", s.get("token_env"), tv, s.get("required"))
+        report(agent, name, "added", s.get("token_env"), s.get("required"))
     if changed and not dry:
         backup(file)
         file.write_text(json.dumps(cfg, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 # ---------- OpenCode (JSON, different shape) ----------------------------------
-def apply_opencode(file: Path, servers, home, dry):
+def apply_opencode(file: Path, servers, wrapper, home, dry):
     file.parent.mkdir(parents=True, exist_ok=True)
     cfg = {}
     if file.exists():
@@ -107,17 +117,17 @@ def apply_opencode(file: Path, servers, home, dry):
     changed = False
     for name, s in servers.items():
         if name in m:
-            report("opencode", name, "skipped", s.get("token_env"), None, s.get("required"))
+            report("opencode", name, "skipped", s.get("token_env"), s.get("required"))
             continue
+        cmd, args, env = launch(s, wrapper, home)
         m[name] = {
             "type": "local",
-            "command": [s["command"]] + list(s["args"]),
-            "environment": expand_env(s.get("env", {}), home),
+            "command": [cmd] + args,
+            "environment": env,
             "enabled": True,
         }
         changed = True
-        tv = m[name]["environment"].get(s.get("token_env", ""), "")
-        report("opencode", name, "added", s.get("token_env"), tv, s.get("required"))
+        report("opencode", name, "added", s.get("token_env"), s.get("required"))
     if changed and not dry:
         backup(file)
         file.write_text(json.dumps(cfg, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -142,17 +152,17 @@ def toml_arr(items):
     return "[" + ", ".join('"' + str(i).replace('"', '\\"') + '"' for i in items) + "]"
 
 
-def apply_codex(file: Path, servers, home, dry):
+def apply_codex(file: Path, servers, wrapper, home, dry):
     file.parent.mkdir(parents=True, exist_ok=True)
     blocks = []
     for name, s in servers.items():
         if codex_present(file, name):
-            report("codex", name, "skipped", s.get("token_env"), None, s.get("required"))
+            report("codex", name, "skipped", s.get("token_env"), s.get("required"))
             continue
-        env = expand_env(s.get("env", {}), home)
+        cmd, args, env = launch(s, wrapper, home)
         b = [f"\n[mcp_servers.{name}]",
-             f'command = "{s["command"]}"',
-             f"args = {toml_arr(s['args'])}"]
+             f'command = "{cmd}"',
+             f"args = {toml_arr(args)}"]
         if s.get("timeout_sec"):
             b.append(f"startup_timeout_sec = {s['timeout_sec']}")
         if env:
@@ -160,8 +170,7 @@ def apply_codex(file: Path, servers, home, dry):
             for k, v in env.items():
                 b.append(f'{k} = "{v}"')
         blocks.append("\n".join(b) + "\n")
-        report("codex", name, "added", s.get("token_env"),
-               env.get(s.get("token_env", ""), ""), s.get("required"))
+        report("codex", name, "added", s.get("token_env"), s.get("required"))
     if blocks and not dry:
         backup(file)
         existing = file.read_text(encoding="utf-8") if file.exists() else ""
@@ -182,7 +191,7 @@ def main():
 
     agents = AGENTS if ("all" in a.agent or not a.agent) else a.agent
     home = Path(a.home)
-    servers = load_servers(Path(a.servers))
+    servers, wrapper = load_servers(Path(a.servers))
     paths = {
         "claude":   home / ".claude.json",
         "cursor":   home / ".cursor" / "mcp.json",
@@ -196,12 +205,12 @@ def main():
             print(f"  [{ag}] unknown agent, skipped"); continue
         print(f"-- {ag}: {str(paths[ag]).replace(str(home), '~')}")
         if ag in ("claude", "cursor"):
-            apply_json_mcpservers(ag, paths[ag], servers, home, a.dry_run)
+            apply_json_mcpservers(ag, paths[ag], servers, wrapper, home, a.dry_run)
         elif ag == "opencode":
-            apply_opencode(paths[ag], servers, home, a.dry_run)
+            apply_opencode(paths[ag], servers, wrapper, home, a.dry_run)
         elif ag == "codex":
-            apply_codex(paths[ag], servers, home, a.dry_run)
-    print("Done. Fill blank tokens in each agent's own config, then restart that agent.")
+            apply_codex(paths[ag], servers, wrapper, home, a.dry_run)
+    print("Done. Store tokens in the OS secret store (see bin/with-secret), then restart each agent.")
 
 
 if __name__ == "__main__":

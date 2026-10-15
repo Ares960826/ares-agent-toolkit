@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
-# Bootstrap the MinerU + SciVerse toolkit on a new device.
-# Idempotent: safe to re-run. NEVER overwrites existing API tokens.
+# Bootstrap the LOCAL part of the MinerU + SciVerse toolkit on a new device:
+# MinerU CLI, the pdf2md wrapper and the cloud output dir. Idempotent.
+# It does NOT edit any agent config and never handles tokens: MCP servers
+# (sciverse, mineru-cloud) and the with-secret wrapper are installed by the repo
+# installer, ares-agent-toolkit/install/install.sh.
 #
 #   bash ~/.claude/skills/mineru-sciverse/setup.sh
 #
 set -euo pipefail
 SKILL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CLAUDE_JSON="${HOME}/.claude.json"
 BIN_DIR="${HOME}/.local/bin"
 OUT_DIR="${HOME}/mineru-downloads"
 
@@ -23,7 +25,7 @@ say "uv: $(uv --version)"
 
 # 2) MinerU local CLI ---------------------------------------------------------
 say "Installing/updating MinerU local CLI (uv tool, isolated)…"
-uv tool install -U "mineru[core]" >/dev/null
+uv tool install --upgrade "mineru>=4,<5" >/dev/null
 say "mineru: $("${BIN_DIR}/mineru" --version 2>/dev/null || mineru --version)"
 
 # 3) pdf2md wrapper -----------------------------------------------------------
@@ -36,52 +38,19 @@ case ":$PATH:" in *":${BIN_DIR}:"*) ;; *) warn "${BIN_DIR} is not on PATH — ad
 mkdir -p "$OUT_DIR"
 say "Cloud output dir: ${OUT_DIR}"
 
-# 5) MCP servers in ~/.claude.json (blank tokens, never clobber existing) ------
-if [[ ! -f "$CLAUDE_JSON" ]]; then
-  warn "${CLAUDE_JSON} not found — run the agent once to create it, then re-run."
-  exit 1
-fi
-cp "$CLAUDE_JSON" "${CLAUDE_JSON}.bak.mineru-sciverse-setup"
-OUT_DIR="$OUT_DIR" python3 - "$CLAUDE_JSON" <<'PY'
-import json, os, sys
-p = sys.argv[1]
-out_dir = os.environ["OUT_DIR"]
-d = json.load(open(p))
-m = d.setdefault("mcpServers", {})
-added = []
-if "sciverse" not in m:
-    m["sciverse"] = {
-        "command": "npx",
-        "args": ["-y", "sciverse-mcp-server"],
-        "env": {"SCIVERSE_API_TOKEN": ""},
-        "timeout": 20,
-    }
-    added.append("sciverse")
-if "mineru-cloud" not in m:
-    m["mineru-cloud"] = {
-        "command": "uvx",
-        "args": ["mineru-open-mcp"],
-        "env": {"MINERU_API_TOKEN": "", "OUTPUT_DIR": out_dir},
-        "timeout": 30,
-    }
-    added.append("mineru-cloud")
-json.dump(d, open(p, "w"), ensure_ascii=False, indent=2)
-print("ADDED:", ", ".join(added) if added else "(none — already present, tokens left untouched)")
-PY
-
+# 5) MCP servers + tokens: handled by the repo installer -------------------------
 cat <<EOF
 
 ────────────────────────────────────────────────────────────────────
- Done. Manual step — fill the two tokens (only if blank), then restart:
+ Local tooling done: mineru CLI + pdf2md (no token needed).
 
-   ~/.claude.json  →  mcpServers.sciverse.env.SCIVERSE_API_TOKEN
-       get it at  https://sciverse.space/tokens   (format sv-...)
-
-   ~/.claude.json  →  mcpServers.mineru-cloud.env.MINERU_API_TOKEN
-       get it at  https://mineru.net  (API management page)
-
- Local 'pdf2md' works now with no token. 'mineru-cloud' works in free
- Flash mode with no token (<=20p/10MB); fill MINERU_API_TOKEN for scale.
- Backup written: ${CLAUDE_JSON}.bak.mineru-sciverse-setup
+ MCP servers (sciverse, mineru-cloud) are NOT configured by this script.
+ From an ares-agent-toolkit checkout run:
+   bash install/install.sh --agents claude,codex      # adds servers via with-secret
+ Tokens live only in the OS secret store, never in agent configs:
+   macOS: printf 'add-generic-password -U -s "claude-mcp:NAME" -a "%s" -w "VALUE"\n' "\$USER" | security -i
+   NAME = SCIVERSE_API_TOKEN (required, https://sciverse.space/tokens)
+          MINERU_API_TOKEN   (optional, https://mineru.net)
+ Then check: bash "${SKILL_DIR}/scripts/check.sh" --online
 ────────────────────────────────────────────────────────────────────
 EOF

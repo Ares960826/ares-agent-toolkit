@@ -12,6 +12,7 @@ carry MCP server definitions and a multi-agent installer.
 ```
 skills/
   mineru-sciverse/    # high-fidelity PDF→Markdown (MinerU) + literature search (SciVerse)
+  contrastive-reading/ # 对比阅读: anchor on papers you already know, report only the delta
   learning-mechanics/ # applied "learning mechanics" DL-engineering reference (from arXiv 2604.21691)
   luffy-arm/           # multiple SSH targets, key/password sessions (v1.8.0 submodule)
 mcp/
@@ -33,9 +34,17 @@ bash install/install.sh                 # auto-detects installed agents
 # optional: also install local MinerU CLI (~2GB, offline parsing)
 bash install/install.sh --with-mineru-cli
 ```
-Then fill the two tokens in **each agent's own** config and restart that agent:
+Then store each token **once** in the OS secret store and restart the agents. Token-gated
+servers are launched through `bin/with-secret` (installed to `~/.claude/bin/with-secret`),
+so no agent config ever contains a token:
 - `SCIVERSE_API_TOKEN` (required) — https://sciverse.space/tokens
-- `MINERU_API_TOKEN` (optional; blank = free Flash mode) — https://mineru.net
+- `MINERU_API_TOKEN` (optional; the MinerU token is a JWT and expires) — https://mineru.net
+
+```bash
+# macOS Keychain (Linux: secret-tool store --label="claude-mcp:NAME" service "claude-mcp:NAME")
+printf 'add-generic-password -U -s "claude-mcp:NAME" -a "%s" -w "VALUE"\n' "$USER" | security -i
+```
+`mineru-cloud` uploads documents to mineru.net; agents must get user consent per request.
 
 Useful flags: `--agents claude,codex` · `--dry-run`.
 
@@ -50,13 +59,13 @@ is the opposite: each agent has its own file/format, so it's written four separa
 - **Each agent in its own lane** — only ever writes its own config file. No cross-writes
   (this is what prevents one agent from clobbering another's setup).
 - **Idempotent** — re-runnable; existing servers and tokens are left untouched.
-- **No secrets in git** — tokens are written blank and filled per device; `.gitignore`
-  blocks real-config filenames as a backstop.
+- **No secrets in git or configs** — tokens live only in the OS secret store and are injected
+  at start-up by `with-secret`; `.gitignore` blocks real-config filenames as a backstop.
 
 See `docs/COMPATIBILITY.md` for exact paths and the share-vs-separate matrix.
 
 ## Verify
 ```bash
-bash skills/mineru-sciverse/scripts/check.sh   # status of local tools + tokens
+bash skills/mineru-sciverse/scripts/check.sh --online   # local tools + token source/expiry/probe
 python3 install/apply_mcp.py --agent all --home /tmp/sandbox   # safe dry test
 ```
