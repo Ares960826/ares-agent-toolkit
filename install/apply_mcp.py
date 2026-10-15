@@ -18,7 +18,7 @@ Each agent writes ONLY to its own file:
   codex    -> $HOME/.codex/config.toml           (TOML  [mcp_servers.*])
   opencode -> $HOME/.config/opencode/opencode.json (JSON mcp{} local shape)
 """
-import argparse, json, os, sys, shutil
+import argparse, json, os, re, shutil, tempfile, time
 from pathlib import Path
 
 try:
@@ -56,11 +56,37 @@ def expand_env(env: dict, home: Path) -> dict:
 
 
 def backup(p: Path):
-    if p.exists():
-        b = p.with_suffix(p.suffix + ".bak.agent-toolkit")
-        shutil.copy2(p, b)
-        return b
-    return None
+    """Copy p to a timestamped sibling; never overwrites an earlier backup."""
+    p = p.resolve()  # a dotfile-managed symlink: back up and edit the real file
+    if not p.exists():
+        return None
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    b = p.with_name(f"{p.name}.bak.agent-toolkit-{stamp}")
+    n = 1
+    while b.exists():
+        b = p.with_name(f"{p.name}.bak.agent-toolkit-{stamp}-{n}")
+        n += 1
+    shutil.copy2(p, b)
+    return b
+
+
+def write_atomic(p: Path, text: str):
+    """Write via a temp file in the same directory, then rename over p (keeps its mode)."""
+    p = p.resolve()  # keep a symlinked config a symlink; replace its target
+    p.parent.mkdir(parents=True, exist_ok=True)
+    mode = (p.stat().st_mode & 0o777) if p.exists() else 0o600
+    fd, tmp = tempfile.mkstemp(dir=p.parent, prefix=p.name + ".", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(text)
+        os.chmod(tmp, mode)
+        os.replace(tmp, p)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
 
 
 def report(agent, name, action, token_env, required):
@@ -76,7 +102,6 @@ def report(agent, name, action, token_env, required):
 
 # ---------- JSON agents (claude / cursor) -------------------------------------
 def apply_json_mcpservers(agent, file: Path, servers, wrapper, home, dry):
-    file.parent.mkdir(parents=True, exist_ok=True)
     cfg = {}
     if file.exists():
         try:
@@ -99,12 +124,11 @@ def apply_json_mcpservers(agent, file: Path, servers, wrapper, home, dry):
         report(agent, name, "added", s.get("token_env"), s.get("required"))
     if changed and not dry:
         backup(file)
-        file.write_text(json.dumps(cfg, ensure_ascii=False, indent=2), encoding="utf-8")
+        write_atomic(file, json.dumps(cfg, ensure_ascii=False, indent=2))
 
 
 # ---------- OpenCode (JSON, different shape) ----------------------------------
 def apply_opencode(file: Path, servers, wrapper, home, dry):
-    file.parent.mkdir(parents=True, exist_ok=True)
     cfg = {}
     if file.exists():
         try:
@@ -130,7 +154,7 @@ def apply_opencode(file: Path, servers, wrapper, home, dry):
         report("opencode", name, "added", s.get("token_env"), s.get("required"))
     if changed and not dry:
         backup(file)
-        file.write_text(json.dumps(cfg, ensure_ascii=False, indent=2), encoding="utf-8")
+        write_atomic(file, json.dumps(cfg, ensure_ascii=False, indent=2))
 
 
 # ---------- Codex (TOML, append-if-absent) -----------------------------------
@@ -144,31 +168,56 @@ def codex_present(file: Path, name: str) -> bool:
         except Exception:
             pass
     # fallback: text scan
-    needle = f"[mcp_servers.{name}]"
-    return needle in file.read_text(encoding="utf-8")
+    text = file.read_text(encoding="utf-8")
+    pat = rf'^\s*\[mcp_servers\.(?:{re.escape(name)}|"{re.escape(name)}")(?:\]|\.)'
+    return re.search(pat, text, re.M) is not None
+
+
+def toml_str(value) -> str:
+    """TOML basic string: escape backslash, quote and control characters."""
+    out = []
+    for ch in str(value):
+        if ch == "\\":
+            out.append("\\\\")
+        elif ch == '"':
+            out.append('\\"')
+        elif ch == "\n":
+            out.append("\\n")
+        elif ch == "\t":
+            out.append("\\t")
+        elif ch == "\r":
+            out.append("\\r")
+        elif ord(ch) < 0x20 or ord(ch) == 0x7F:
+            out.append(f"\\u{ord(ch):04x}")
+        else:
+            out.append(ch)
+    return '"' + "".join(out) + '"'
+
+
+def toml_key(key: str) -> str:
+    return key if re.fullmatch(r"[A-Za-z0-9_-]+", key) else toml_str(key)
 
 
 def toml_arr(items):
-    return "[" + ", ".join('"' + str(i).replace('"', '\\"') + '"' for i in items) + "]"
+    return "[" + ", ".join(toml_str(i) for i in items) + "]"
 
 
 def apply_codex(file: Path, servers, wrapper, home, dry):
-    file.parent.mkdir(parents=True, exist_ok=True)
     blocks = []
     for name, s in servers.items():
         if codex_present(file, name):
             report("codex", name, "skipped", s.get("token_env"), s.get("required"))
             continue
         cmd, args, env = launch(s, wrapper, home)
-        b = [f"\n[mcp_servers.{name}]",
-             f'command = "{cmd}"',
+        b = [f"\n[mcp_servers.{toml_key(name)}]",
+             f"command = {toml_str(cmd)}",
              f"args = {toml_arr(args)}"]
         if s.get("timeout_sec"):
             b.append(f"startup_timeout_sec = {s['timeout_sec']}")
         if env:
-            b.append(f"\n[mcp_servers.{name}.env]")
+            b.append(f"\n[mcp_servers.{toml_key(name)}.env]")
             for k, v in env.items():
-                b.append(f'{k} = "{v}"')
+                b.append(f"{toml_key(k)} = {toml_str(v)}")
         blocks.append("\n".join(b) + "\n")
         report("codex", name, "added", s.get("token_env"), s.get("required"))
     if blocks and not dry:
@@ -176,7 +225,7 @@ def apply_codex(file: Path, servers, wrapper, home, dry):
         existing = file.read_text(encoding="utf-8") if file.exists() else ""
         if existing and not existing.endswith("\n"):
             existing += "\n"
-        file.write_text(existing + "".join(blocks), encoding="utf-8")
+        write_atomic(file, existing + "".join(blocks))
 
 
 def main():

@@ -18,7 +18,7 @@ skills/
 mcp/
   servers.json        # canonical, agent-neutral MCP server defs (source of truth)
 install/
-  install.sh          # detect agents → copy skills → apply MCP (native format) → fill-token notes
+  install.sh          # detect agents → symlink skills → apply MCP (native format) → fill-token notes
   apply_mcp.py        # translates servers.json into each agent's config (idempotent)
 docs/
   COMPATIBILITY.md    # per-agent skill/MCP paths + which agents share vs. stay separate
@@ -50,7 +50,9 @@ Useful flags: `--agents claude,codex` · `--dry-run`.
 
 All four agents implement the **Agent Skills** standard and cross-read each other's home
 skill dirs, so the installer only populates `~/.claude/skills` (read by Claude/Cursor/OpenCode)
-and `~/.agents/skills` (read by Codex/Cursor/OpenCode) — never per-agent duplicates. MCP config
+and `~/.agents/skills` (read by Codex/Cursor/OpenCode) — never per-agent duplicates. Skills are
+symlinked to this checkout (an old copied install is moved to `~/.claude/backups/` first), so
+`git pull` updates every agent. The official `mineru` skill is not vendored: `setup.sh` installs and updates it from upstream. MCP config
 is the opposite: each agent has its own file/format, so it's written four separate ways. See
 `docs/COMPATIBILITY.md`.
 

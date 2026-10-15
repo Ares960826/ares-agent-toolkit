@@ -93,7 +93,6 @@ def main(argv):
         archive_output = Path(tmp)/'bundles'
         archive_output.mkdir()
         env = os.environ.copy()
-        env.setdefault('MINERU_MODEL_SOURCE', 'huggingface')
         print(f'pdf2md: {path} -> {output} (MinerU 4 tier={selected})', file=sys.stderr)
         result = subprocess.run([cmd, 'parse', str(path), '-o', str(archive_output), '--format', 'zip', '--tier', selected, *forwarded], env=env)
         if result.returncode:

@@ -11,8 +11,8 @@
 |-----------|-----------|-------|----------|
 | MinerU local CLI | `uv tool install "mineru>=4,<5"` | none | `~/.local/bin/mineru` |
 | `pdf2md` wrapper | bundled script | none | `~/.local/bin/pdf2md` |
-| `mineru-cloud` MCP | `with-secret MINERU_API_TOKEN -- uvx mineru-open-mcp==1.0.22` | `MINERU_API_TOKEN` (JWT, expires) | each agent's config, via `install/install.sh` |
-| `sciverse` MCP | `with-secret SCIVERSE_API_TOKEN -- npx -y sciverse-mcp-server` | `SCIVERSE_API_TOKEN` (required) | each agent's config, via `install/install.sh` |
+| `mineru-cloud` MCP | `with-secret --optional MINERU_API_TOKEN -- uvx mineru-open-mcp@latest` | `MINERU_API_TOKEN` (optional; JWT tokens expire) | each agent's config, via `install/install.sh` |
+| `sciverse` MCP | `with-secret SCIVERSE_API_TOKEN -- npx -y sciverse-mcp-server@latest` | `SCIVERSE_API_TOKEN` (required) | each agent's config, via `install/install.sh` |
 | `with-secret` | repo `bin/with-secret` → `~/.claude/bin/with-secret` | reads `claude-mcp:NAME` from Keychain / secret-tool / 0600 file | — |
 
 ## Bundled scripts (in this skill folder)
@@ -20,9 +20,8 @@
 | Script | What it does |
 |--------|--------------|
 | `setup.sh` | Idempotent local bootstrap: MinerU CLI, `pdf2md`, output dir. Edits no agent config and handles no tokens. |
-| `scripts/check.sh` | Preflight/doctor — install status, token source + JWT expiry; `--online` adds one HTTP probe per service. Never prints secrets. |
-| `scripts/batch-local.sh` | Parse an entire folder LOCALLY (the no-token, on-machine batch fallback). |
-| `pdf2md` | Single-file local wrapper (installed to `~/.local/bin`). |
+| `scripts/check.sh` | Preflight/doctor — install and model status, per-agent MCP wiring (Claude/Cursor/Codex), token source + JWT expiry for `MINERU_API_TOKEN`, `MINERU_API_KEY`, `SCIVERSE_API_TOKEN`; `--online` adds one HTTP probe per service. Never prints secrets. |
+| `pdf2md` | Local wrapper for a file, a directory or a URL (installed to `~/.local/bin`). |
 
 ## Relationship to the built-in `pdf` skill (don't overlap)
 
@@ -44,8 +43,9 @@ The previous V3 pipeline/hybrid resource measurements do not describe V4. On App
 
 ```bash
 mineru version --json
-mineru-kit models download --tier standard --source huggingface
+mineru-kit models download --tier standard      # source defaults to auto; --source huggingface|modelscope to force
 mineru-kit models verify --tier standard
+mineru-kit models show                          # effective config and per-repo readiness
 pdf2md paper.pdf out/ --tier standard
 pdf2md scan.pdf out/ --tier basic --ocr-mode ocr
 pdf2md paper.pdf out/ --pages 1-10
@@ -61,7 +61,7 @@ For V4 HTTP integrations use `/v1/health`, `/v1/tiers`, `/v1/uploads`, `/v1/pars
 
 - Tools: `parse_documents` (local paths and/or remote URLs → Markdown), `get_ocr_languages`.
 - **Uploads documents to mineru.net.** Use only after the user approves uploading the specific documents (global CLAUDE.md/AGENTS.md rule; overrides the server's own "call immediately" instruction).
-- Env: `MINERU_API_TOKEN` via `with-secret` (token: ≤200p/200MB, batch ≤200 files; tokenless Flash: ≤20p/10MB, single file, IP rate-limited; the wrapper uses `--optional`, so a missing token falls back to Flash), `OUTPUT_DIR` (default `~/mineru-downloads`).
+- Env: `MINERU_API_TOKEN` via `with-secret` (not `MINERU_API_KEY`, which only the official CLI's `--remote` reads; token: ≤200p/200MB, batch ≤200 files; tokenless Flash: ≤20p/10MB, single file, IP rate-limited; the wrapper uses `--optional`, so a missing token falls back to Flash), `OUTPUT_DIR` (default `~/mineru-downloads`).
 - Single-file parses return inline markdown; batch parses save to `OUTPUT_DIR` and return file metadata + a zip URL.
 - Token: https://mineru.net (API management). Flash docs: https://mineru.net/apiManage/docs
 
@@ -88,7 +88,7 @@ For V4 HTTP integrations use `/v1/health`, `/v1/tiers`, `/v1/uploads`, `/v1/pars
 1. `sciverse` → find / semantic-search relevant papers, get PDFs.
 2. Parse them locally with `pdf2md` (single file or directory). Use `mineru-cloud` for batch/large
    jobs only after the user approves uploading those documents.
-3. Hand the Markdown to the agent for analysis / writing / Zotero notes.
+3. Hand the Markdown to the agent for analysis and writing.
 
 ## New device
 
@@ -99,12 +99,15 @@ For V4 HTTP integrations use `/v1/health`, `/v1/tiers`, `/v1/uploads`, `/v1/pars
    (Linux: `secret-tool store --label="claude-mcp:NAME" service "claude-mcp:NAME"`).
 3. `bash scripts/check.sh --online`, then restart the agents.
 
+## Upgrading
+
+One command: `bash setup.sh` (from this skill directory). It stops a running `mineru server`, upgrades the CLI within `>=4,<5`, and updates the official `mineru` skill with `npx skills update mineru --global --yes`. The two MCP packages use `@latest`, so they follow on the next agent start. Nothing here vendors upstream files.
+
 ## Uninstall / reclaim space
 
 ```bash
 uv tool uninstall mineru          # remove program
 rm -rf ~/.mineru/models           # MinerU 4 models
-# Hugging Face cache: ~/.cache/huggingface/hub/models--opendatalab--MinerU-4_models_torch (and other MinerU* repos)
-# ~/.cache/modelscope may hold MinerU 3 models from older installs
+# older installs may also hold models in ~/.cache/huggingface or ~/.cache/modelscope
 # then delete the two servers from ~/.claude.json if desired
 ```

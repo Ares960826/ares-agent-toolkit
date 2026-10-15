@@ -29,7 +29,8 @@ Home-level discovery (verified against each vendor's docs, 2026-06):
   write into `.cursor/skills` or `.config/opencode/skills`.
 - No single dir is read by **both** Claude and Codex, so two dirs is the minimum. When both a
   `~/.claude/skills` consumer and Codex are present, Cursor/OpenCode see the skill in both dirs;
-  the Agent Skills spec keys skills by a unique `name`, so they **dedupe** and it won't double-apply.
+  they may list it twice. Codex's docs say same-name skills are not merged, and Cursor/OpenCode do not
+  document deduplication, so target only the agents you use.
 - Project-level equivalents (`.agents/skills/`, `.claude/skills/`, `.cursor/skills/`,
   `.opencode/skills/`) work the same way if you'd rather colocate a skill with a repo.
 

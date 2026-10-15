@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # agent-toolkit installer — install our DIY skills + MCP servers into whichever
 # AI coding agents you use, each in its OWN config location/format. Idempotent;
-# never overwrites existing entries. No secrets are stored in this repo or in any
+# never overwrites existing MCP entries. Skills are symlinked, not copied, so a
+# `git pull` in this checkout updates every agent. No secrets are stored in this repo or in any
 # agent config: tokens live in the OS secret store and are injected by with-secret.
 #
 #   bash install/install.sh                 # auto-detect installed agents
@@ -12,6 +13,7 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 HOME_DIR="${HOME}"
+TILDE="~"   # literal ~ for messages (bash 3.2 keeps a backslash in ${var/x/\~})
 AGENTS=""; WITH_CLI=0; DRY=0
 
 while [[ $# -gt 0 ]]; do
@@ -29,7 +31,7 @@ note(){ printf '\033[1;33m  note:\033[0m %s\n' "$*"; }
 
 # ---- 0) ensure bundled submodule skills (e.g. luffy-arm) are populated -------
 # Some skills are vendored as git submodules; a plain `git clone` leaves them empty.
-if [[ -f "$ROOT/.gitmodules" ]] && command -v git >/dev/null 2>&1; then
+if [[ $DRY -eq 0 && -f "$ROOT/.gitmodules" ]] && command -v git >/dev/null 2>&1; then
   git -C "$ROOT" submodule update --init --recursive >/dev/null 2>&1 \
     || note "couldn't init submodules; run: git -C \"$ROOT\" submodule update --init --recursive"
 fi
@@ -72,20 +74,38 @@ fi
 #   ~/.agents/skills  -> read by Codex, Cursor, OpenCode
 # So we only populate these two producer dirs (never .cursor/.opencode separately),
 # choosing the minimal set that covers the targeted agents without needless dupes.
-copy_skills(){  # $1 = dest dir
-  local dest="$1"
-  [[ $DRY -eq 1 ]] && { echo "  (dry) would copy skills -> ${dest/$HOME_DIR/\~}"; return; }
-  mkdir -p "$dest"
-  local skill
-  for skill in "$ROOT"/skills/*; do
-    [[ -d "$skill" ]] || continue
-    if [[ "$(basename "$skill")" == luffy-arm ]]; then
-      # Use the product allowlist and install the independently discoverable switches.
-      [[ -f "$skill/install.sh" ]] || { echo "luffy-arm submodule is not populated" >&2; return 1; }
-      LUFFY_ARM_DIR="$dest" bash "$skill/install.sh"
-    else
-      cp -R "$skill" "$dest/"
+# Codex documents ~/.agents/skills as its user skills location and follows symlinks.
+# An existing symlink to somewhere else (e.g. the official `mineru` skill) is kept.
+BACKUP_DIR="$HOME_DIR/.claude/backups/agent-toolkit-skills-$(date +%Y%m%d-%H%M%S)"
+link_skills(){  # $1 = dest dir; symlink every skill dir that has a SKILL.md
+  local dest="$1" src name target current
+  [[ $DRY -eq 1 ]] || mkdir -p "$dest"
+  for src in "$ROOT"/skills/*/; do
+    src="${src%/}"; name="$(basename "$src")"
+    [[ -f "$src/SKILL.md" ]] || continue            # skips empty submodules
+    target="$dest/$name"
+    if [[ "$name" == luffy-arm ]]; then
+      # luffy-arm ships its own installer (product allowlist + companion switches).
+      [[ $DRY -eq 1 ]] && { echo "  (dry) would run luffy-arm installer -> $dest"; continue; }
+      [[ -f "$src/install.sh" ]] || { echo "luffy-arm submodule is not populated" >&2; return 1; }
+      LUFFY_ARM_DIR="$dest" bash "$src/install.sh"
+      continue
     fi
+    if [[ -L "$target" ]]; then
+      current="$(readlink "$target")"
+      if [[ "$current" == "$src" ]]; then continue; fi
+      note "$name: ${target/$HOME_DIR/$TILDE} is a symlink to $current; left untouched"
+      continue
+    fi
+    if [[ -e "$target" ]]; then                      # an old copied install: back it up, then link
+      if [[ $DRY -eq 1 ]]; then echo "  (dry) would back up and link $name"; continue; fi
+      mkdir -p "$BACKUP_DIR"
+      mv "$target" "$BACKUP_DIR/$name"
+      note "$name: previous copy moved to ${BACKUP_DIR/$HOME_DIR/$TILDE}/$name"
+    elif [[ $DRY -eq 1 ]]; then
+      echo "  (dry) would link $name"; continue
+    fi
+    ln -s "$src" "$target"
   done
 }
 need_claude_dir=0; need_agents_dir=0
@@ -97,20 +117,20 @@ for ag in "${AGENT_ARR[@]}"; do
 done
 if [[ $need_claude_dir -eq 1 ]]; then
   say "Skills -> ~/.claude/skills  (discovered by Claude, Cursor, OpenCode)"
-  copy_skills "$HOME_DIR/.claude/skills"
+  link_skills "$HOME_DIR/.claude/skills"
 fi
 if [[ $need_agents_dir -eq 1 ]]; then
   say "Skills -> ~/.agents/skills  (discovered by Codex, Cursor, OpenCode)"
-  copy_skills "$HOME_DIR/.agents/skills"
+  link_skills "$HOME_DIR/.agents/skills"
 fi
 [[ $need_claude_dir -eq 1 && $need_agents_dir -eq 1 ]] && \
-  note "Cursor/OpenCode read both dirs; skills are deduped by their unique 'name', so the same skill won't double-apply."
+  note "Cursor/OpenCode read both dirs and may list each skill twice (same-name skills are not merged). Target only the agents you use."
 
 # ---- 3) MCP servers per agent (native format, idempotent) -------------------
 say "Applying MCP servers (tokens via secret store, never clobbering existing)…"
 DRY_FLAG=(); [[ $DRY -eq 1 ]] && DRY_FLAG=(--dry-run)
 AG_FLAGS=(); for ag in "${AGENT_ARR[@]}"; do AG_FLAGS+=(--agent "$ag"); done
-python3 "$ROOT/install/apply_mcp.py" "${AG_FLAGS[@]}" "${DRY_FLAG[@]}"
+python3 "$ROOT/install/apply_mcp.py" "${AG_FLAGS[@]}" ${DRY_FLAG[@]+"${DRY_FLAG[@]}"}
 
 # ---- 4) optional heavy local CLI -------------------------------------------
 if [[ $WITH_CLI -eq 1 ]]; then

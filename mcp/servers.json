@@ -1,10 +1,10 @@
 {
-  "_comment": "Canonical, agent-neutral definition of our DIY MCP servers. The installer translates this into each agent's native config format. Tokens are NEVER written into configs: servers with token_env are launched through secret_wrapper, which reads claude-mcp:<token_env> from the OS secret store (see bin/with-secret). Never commit real tokens.",
+  "_comment": "Canonical, agent-neutral definition of our DIY MCP servers. Packages use @latest so every agent start follows the newest release. The installer translates this into each agent's native config format. Tokens are NEVER written into configs: servers with token_env are launched through secret_wrapper, which reads claude-mcp:<token_env> from the OS secret store (see bin/with-secret). Never commit real tokens.",
   "secret_wrapper": "~/.claude/bin/with-secret",
   "servers": {
     "sciverse": {
       "command": "npx",
-      "args": ["-y", "sciverse-mcp-server"],
+      "args": ["-y", "sciverse-mcp-server@latest"],
       "env": {},
       "timeout_sec": 20,
       "token_env": "SCIVERSE_API_TOKEN",
@@ -14,7 +14,7 @@
     },
     "mineru-cloud": {
       "command": "uvx",
-      "args": ["mineru-open-mcp==1.0.22"],
+      "args": ["mineru-open-mcp@latest"],
       "env": { "OUTPUT_DIR": "~/mineru-downloads" },
       "timeout_sec": 30,
       "token_env": "MINERU_API_TOKEN",
