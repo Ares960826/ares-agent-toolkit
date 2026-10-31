@@ -14,7 +14,7 @@ skills/
   mineru-sciverse/    # high-fidelity PDF→Markdown (MinerU) + literature search (SciVerse)
   contrastive-reading/ # 对比阅读: anchor on papers you already know, report only the delta
   learning-mechanics/ # applied "learning mechanics" DL-engineering reference (from arXiv 2604.21691)
-  luffy-arm/           # multiple SSH targets, key/password sessions (v1.8.0 submodule)
+  luffy-arm/           # multiple SSH targets, key/password sessions (v1.9.0 submodule)
 mcp/
   servers.json        # canonical, agent-neutral MCP server defs (source of truth)
 install/
@@ -24,7 +24,7 @@ docs/
   COMPATIBILITY.md    # per-agent skill/MCP paths + which agents share vs. stay separate
 ```
 
-Luffy Arm v1.8.0 supports named key/password targets. See [registration and upgrade](docs/LUFFY_ARM.md).
+Luffy Arm v1.9.0 supports named key/password targets. See [registration and upgrade](docs/LUFFY_ARM.md).
 
 ## Quick start (new device)
 ```bash

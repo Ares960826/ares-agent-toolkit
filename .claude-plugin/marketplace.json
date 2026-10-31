@@ -15,7 +15,7 @@
         "source": "github",
         "repo": "Ares960826/luffy-arm"
       },
-      "description": "Connect local AI agents to multiple registered SSH servers with key or user-opened password sessions, timed access and scoped shutdown (v1.8.0).",
+      "description": "Connect local AI agents to multiple registered SSH servers with key or user-opened password sessions, timed access and scoped shutdown (v1.9.0).",
       "homepage": "https://github.com/Ares960826/luffy-arm",
       "license": "MIT",
       "keywords": [
