@@ -149,6 +149,9 @@ cat <<EOF
  Linux : secret-tool store --label="claude-mcp:NAME" service "claude-mcp:NAME"
  Check : bash ~/.claude/skills/mineru-sciverse/scripts/check.sh --online
  mineru-cloud UPLOADS documents to mineru.net: agents must ask before using it.
+ RealRead needs uv, Google Chrome and one sign-in setup (no token):
+   uv run --directory "$ROOT/mcp/realread" realread init
+   uv run --directory "$ROOT/mcp/realread" realread login
  See docs/COMPATIBILITY.md for which agents share dirs and which don't.
 ────────────────────────────────────────────────────────────────────
 EOF

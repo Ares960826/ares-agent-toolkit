@@ -17,6 +17,7 @@ skills/
   luffy-arm/           # multiple SSH targets, key/password sessions (v1.9.0 submodule)
 mcp/
   servers.json        # canonical, agent-neutral MCP server defs (source of truth)
+  realread/           # read papers you can already access, through your signed-in Chrome (submodule)
 install/
   install.sh          # detect agents → symlink skills → apply MCP (native format) → fill-token notes
   apply_mcp.py        # translates servers.json into each agent's config (idempotent)
@@ -28,7 +29,7 @@ Luffy Arm v1.9.0 supports named key/password targets. See [registration and upgr
 
 ## Quick start (new device)
 ```bash
-git clone --recurse-submodules <this-repo> ~/agent-toolkit   # --recurse-submodules pulls the luffy-arm skill
+git clone --recurse-submodules <this-repo> ~/agent-toolkit   # --recurse-submodules pulls luffy-arm and realread
 cd ~/agent-toolkit
 bash install/install.sh                 # auto-detects installed agents
 # optional: also install local MinerU CLI (~2GB, offline parsing)
@@ -45,6 +46,13 @@ so no agent config ever contains a token:
 printf 'add-generic-password -U -s "claude-mcp:NAME" -a "%s" -w "VALUE"\n' "$USER" | security -i
 ```
 `mineru-cloud` uploads documents to mineru.net; agents must get user consent per request.
+
+[RealRead](https://github.com/Ares960826/realread) needs no token, but it needs `uv`, Google Chrome and one setup:
+```bash
+uv run --directory mcp/realread realread init    # choose directories and your institution
+uv run --directory mcp/realread realread login   # sign in once in its dedicated Chrome
+```
+After `git pull`, run `git submodule update --init --recursive` to get the pinned version, then restart the agents.
 
 Useful flags: `--agents claude,codex` · `--dry-run`.
 

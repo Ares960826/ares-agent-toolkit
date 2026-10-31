@@ -1,3 +1,6 @@
 [submodule "skills/luffy-arm"]
 	path = skills/luffy-arm
 	url = https://github.com/Ares960826/luffy-arm
+[submodule "mcp/realread"]
+	path = mcp/realread
+	url = https://github.com/Ares960826/realread

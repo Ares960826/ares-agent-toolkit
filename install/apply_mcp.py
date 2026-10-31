@@ -31,6 +31,9 @@ AGENTS = ["claude", "cursor", "codex", "opencode"]
 
 def load_servers(path: Path):
     data = json.loads(path.read_text(encoding="utf-8"))
+    root = str(path.resolve().parent.parent)  # mcp/servers.json -> the toolkit checkout
+    for s in data["servers"].values():
+        s["args"] = [a.replace("{toolkit}", root) for a in s["args"]]
     return data["servers"], data.get("secret_wrapper")
 
 

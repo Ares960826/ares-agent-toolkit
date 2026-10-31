@@ -1,5 +1,5 @@
 {
-  "_comment": "Canonical, agent-neutral definition of our DIY MCP servers. Packages use @latest so every agent start follows the newest release. The installer translates this into each agent's native config format. Tokens are NEVER written into configs: servers with token_env are launched through secret_wrapper, which reads claude-mcp:<token_env> from the OS secret store (see bin/with-secret). Never commit real tokens.",
+  "_comment": "Canonical, agent-neutral definition of our DIY MCP servers. Packages use @latest so every agent start follows the newest release; {toolkit} in args is this checkout, for servers pinned as submodules. The installer translates this into each agent's native config format. Tokens are NEVER written into configs: servers with token_env are launched through secret_wrapper, which reads claude-mcp:<token_env> from the OS secret store (see bin/with-secret). Never commit real tokens.",
   "secret_wrapper": "~/.claude/bin/with-secret",
   "servers": {
     "sciverse": {
@@ -21,6 +21,13 @@
       "token_url": "https://mineru.net",
       "required": false,
       "note": "Cloud document parsing; UPLOADS documents to mineru.net, so agents must get user consent per request. Token optional (wrapped with --optional): without one the server runs in free Flash mode (<=20p/10MB, single file)."
+    },
+    "realread": {
+      "command": "uv",
+      "args": ["run", "--directory", "{toolkit}/mcp/realread", "realread", "serve"],
+      "env": {},
+      "timeout_sec": 60,
+      "note": "Reads full texts of papers the user can already access, through a dedicated signed-in Chrome, under fixed politeness limits. Runs from the pinned submodule. No token. Needs uv and Google Chrome, and one `realread init` + `realread login` by the user."
     }
   }
 }
